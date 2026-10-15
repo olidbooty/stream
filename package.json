@@ -10,7 +10,10 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
   },
   "license": "ISC",
   "dependencies": {

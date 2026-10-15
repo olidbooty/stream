@@ -1,0 +1,12 @@
+{
+  "name": "stream",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stream video from torrents in the browser using WebTorrent",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {},
+  "license": "ISC"
+}

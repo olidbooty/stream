@@ -7,15 +7,32 @@ import { EventEmitter } from 'node:events';
 
 const DEFAULT_INFO_HASH = '0123456789abcdef0123456789abcdef01234567';
 
+type Callback = (err: Error | null) => void;
+type TorrentCallback = (torrent: FakeTorrent) => void;
+
+export interface FakeFileOptions {
+  name: string;
+  length?: number;
+  path?: string;
+}
+
+export interface FakeTorrentOptions {
+  infoHash?: string;
+}
+
 export class FakeFile {
-  constructor({ name, length = 0, path = name } = {}) {
+  name: string;
+  path: string;
+  length: number;
+  downloaded = 0;
+  progress = 0;
+  selected = true;
+  streamedTo: HTMLMediaElement | null = null;
+
+  constructor({ name, length = 0, path = name }: FakeFileOptions) {
     this.name = name;
     this.path = path;
     this.length = length;
-    this.downloaded = 0;
-    this.progress = 0;
-    this.selected = true;
-    this.streamedTo = null;
   }
 
   select() {
@@ -26,34 +43,41 @@ export class FakeFile {
     this.selected = false;
   }
 
-  streamTo(element) {
+  streamTo<T extends HTMLMediaElement>(element: T): T {
     this.streamedTo = element;
     return element;
   }
 }
 
 export class FakeTorrent extends EventEmitter {
-  constructor(torrentId, { infoHash = DEFAULT_INFO_HASH } = {}) {
+  torrentId: unknown;
+  infoHash: string;
+  magnetURI: string;
+  name: string | undefined = undefined;
+  files: FakeFile[] = [];
+  length = 0;
+  downloaded = 0;
+  uploaded = 0;
+  downloadSpeed = 0;
+  uploadSpeed = 0;
+  numPeers = 0;
+  progress = 0;
+  ready = false;
+  done = false;
+  destroyed = false;
+
+  constructor(torrentId: unknown, { infoHash = DEFAULT_INFO_HASH }: FakeTorrentOptions = {}) {
     super();
     this.torrentId = torrentId;
     this.infoHash = infoHash;
     this.magnetURI = typeof torrentId === 'string' ? torrentId : `magnet:?xt=urn:btih:${infoHash}`;
-    this.name = undefined;
-    this.files = [];
-    this.length = 0;
-    this.downloaded = 0;
-    this.uploaded = 0;
-    this.downloadSpeed = 0;
-    this.uploadSpeed = 0;
-    this.numPeers = 0;
-    this.progress = 0;
-    this.ready = false;
-    this.done = false;
-    this.destroyed = false;
   }
 
   // Metadata arrives: files become known and the torrent is ready to stream.
-  simulateMetadata({ name = 'fixture', files = [] } = {}) {
+  simulateMetadata({
+    name = 'fixture',
+    files = [],
+  }: { name?: string; files?: (FakeFile | FakeFileOptions)[] } = {}): void {
     this.name = name;
     this.files = files.map((file) => (file instanceof FakeFile ? file : new FakeFile(file)));
     this.length = this.files.reduce((total, file) => total + file.length, 0);
@@ -62,7 +86,10 @@ export class FakeTorrent extends EventEmitter {
     this.emit('ready');
   }
 
-  simulateDownload(bytes, { downloadSpeed = bytes, numPeers = this.numPeers } = {}) {
+  simulateDownload(
+    bytes: number,
+    { downloadSpeed = bytes, numPeers = this.numPeers }: { downloadSpeed?: number; numPeers?: number } = {},
+  ): void {
     this.downloaded = Math.min(this.length, this.downloaded + bytes);
     this.downloadSpeed = downloadSpeed;
     this.numPeers = numPeers;
@@ -70,22 +97,22 @@ export class FakeTorrent extends EventEmitter {
     this.emit('download', bytes);
   }
 
-  simulateDone() {
+  simulateDone(): void {
     this.downloaded = this.length;
     this.progress = 1;
     this.done = true;
     this.emit('done');
   }
 
-  simulateNoPeers(announceType = 'tracker') {
+  simulateNoPeers(announceType: 'tracker' | 'dht' | 'lsd' = 'tracker'): void {
     this.emit('noPeers', announceType);
   }
 
-  simulateError(error = new Error('fake torrent error')) {
+  simulateError(error: Error = new Error('fake torrent error')): void {
     this.emit('error', error);
   }
 
-  destroy(opts, callback) {
+  destroy(opts?: object | Callback, callback?: Callback): void {
     const cb = typeof opts === 'function' ? opts : callback;
     this.destroyed = true;
     this.emit('close');
@@ -94,31 +121,37 @@ export class FakeTorrent extends EventEmitter {
 }
 
 export class FakeWebTorrent extends EventEmitter {
-  static instances = [];
+  static instances: FakeWebTorrent[] = [];
 
-  constructor(opts = {}) {
+  opts: Record<string, unknown>;
+  torrents: FakeTorrent[] = [];
+  destroyed = false;
+
+  constructor(opts: Record<string, unknown> = {}) {
     super();
     this.opts = opts;
-    this.torrents = [];
-    this.destroyed = false;
     FakeWebTorrent.instances.push(this);
   }
 
-  get downloadSpeed() {
+  get downloadSpeed(): number {
     return this.torrents.reduce((total, torrent) => total + torrent.downloadSpeed, 0);
   }
 
-  get uploadSpeed() {
+  get uploadSpeed(): number {
     return this.torrents.reduce((total, torrent) => total + torrent.uploadSpeed, 0);
   }
 
-  get progress() {
+  get progress(): number {
     const length = this.torrents.reduce((total, torrent) => total + torrent.length, 0);
     const downloaded = this.torrents.reduce((total, torrent) => total + torrent.downloaded, 0);
     return length ? downloaded / length : 0;
   }
 
-  add(torrentId, opts, ontorrent) {
+  add(
+    torrentId: unknown,
+    opts?: FakeTorrentOptions | TorrentCallback,
+    ontorrent?: TorrentCallback,
+  ): FakeTorrent {
     const options = typeof opts === 'function' ? {} : (opts ?? {});
     const callback = typeof opts === 'function' ? opts : ontorrent;
     const torrent = new FakeTorrent(torrentId, options);
@@ -130,18 +163,18 @@ export class FakeWebTorrent extends EventEmitter {
     return torrent;
   }
 
-  get(torrentId) {
+  get(torrentId: unknown): FakeTorrent | null {
     return this.torrents.find(
       (torrent) =>
         torrent === torrentId || torrent.infoHash === torrentId || torrent.magnetURI === torrentId,
     ) ?? null;
   }
 
-  remove(torrentId, opts, callback) {
+  remove(torrentId: unknown, opts?: object | Callback, callback?: Callback): void {
     const cb = typeof opts === 'function' ? opts : callback;
     const torrent = this.get(torrentId);
     if (!torrent) {
-      cb?.(new Error(`No torrent with id ${torrentId}`));
+      cb?.(new Error(`No torrent with id ${String(torrentId)}`));
       return;
     }
     this.torrents = this.torrents.filter((t) => t !== torrent);
@@ -150,19 +183,19 @@ export class FakeWebTorrent extends EventEmitter {
     cb?.(null);
   }
 
-  destroy(callback) {
+  destroy(callback?: Callback): void {
     for (const torrent of this.torrents) torrent.destroy();
     this.torrents = [];
     this.destroyed = true;
     callback?.(null);
   }
 
-  simulateError(error = new Error('fake client error')) {
+  simulateError(error: Error = new Error('fake client error')): void {
     this.emit('error', error);
   }
 
   // Call in afterEach so instances don't leak between tests.
-  static reset() {
+  static reset(): void {
     FakeWebTorrent.instances = [];
   }
 }

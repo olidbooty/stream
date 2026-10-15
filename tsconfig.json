@@ -1,0 +1,17 @@
+{
+  // Type-check only: Vite and Vitest transpile TypeScript themselves, and tsx runs the server.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["server", "client/src", "test", "vite.config.ts", "vitest.config.ts"]
+}

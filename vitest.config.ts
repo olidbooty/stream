@@ -4,7 +4,7 @@ import viteConfig from './vite.config.js';
 export default mergeConfig(
   viteConfig,
   defineConfig({
-    // vite.config.js roots Vite at client/; tests are resolved from the repo root.
+    // vite.config.ts roots Vite at client/; tests are resolved from the repo root.
     root: '.',
     test: {
       projects: [
@@ -13,7 +13,7 @@ export default mergeConfig(
           test: {
             name: 'server',
             environment: 'node',
-            include: ['server/**/*.test.js'],
+            include: ['server/**/*.test.ts'],
           },
         },
         {
@@ -21,14 +21,14 @@ export default mergeConfig(
           test: {
             name: 'client',
             environment: 'jsdom',
-            include: ['client/**/*.test.js', 'test/**/*.test.js'],
+            include: ['client/**/*.test.ts', 'test/**/*.test.ts'],
           },
         },
       ],
       coverage: {
         provider: 'v8',
-        include: ['server/**/*.js', 'client/src/**/*.js'],
-        exclude: ['**/*.test.js', 'server/index.js'],
+        include: ['server/**/*.ts', 'client/src/**/*.ts'],
+        exclude: ['**/*.test.ts', 'server/index.ts'],
       },
     },
   }),

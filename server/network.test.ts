@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { lanAddresses } from './network.js';
+import { lanAddresses, type NetworkInterfaces } from './network.js';
 
 describe('lanAddresses', () => {
   it('returns only external IPv4 addresses', () => {
-    const interfaces = {
+    const interfaces: NetworkInterfaces = {
       lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }],
       eth0: [
         { family: 'IPv4', address: '192.168.1.20', internal: false },
@@ -13,6 +13,10 @@ describe('lanAddresses', () => {
     };
 
     expect(lanAddresses(interfaces)).toEqual(['192.168.1.20', '10.0.0.5']);
+  });
+
+  it('skips interfaces with no address list', () => {
+    expect(lanAddresses({ eth0: undefined })).toEqual([]);
   });
 
   it('returns an empty list when there is no network', () => {

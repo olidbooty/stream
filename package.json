@@ -8,5 +8,9 @@
     "node": ">=20.19"
   },
   "scripts": {},
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.3.0",
+    "webtorrent": "^3.0.21"
+  }
 }

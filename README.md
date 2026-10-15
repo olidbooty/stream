@@ -48,3 +48,5 @@ compile step. Relative imports keep the `.js` extension (`./app.js` resolves
 to `app.ts`), as Node's ESM resolution expects.
 
 See [TESTING.md](TESTING.md) for test conventions.
+See [PROJECT_MANAGEMENT.md](PROJECT_MANAGEMENT.md) for the project tracker and
+how work is planned.

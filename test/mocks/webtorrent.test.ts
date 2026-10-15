@@ -7,20 +7,25 @@ vi.mock('webtorrent', () => import('./webtorrent.js'));
 
 const MAGNET = 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567';
 
+// Typed as the real client, but under vi.mock the instance is the fake.
+function createClient(): FakeWebTorrent {
+  return new WebTorrent() as unknown as FakeWebTorrent;
+}
+
 describe('WebTorrent mock', () => {
   afterEach(() => {
     FakeWebTorrent.reset();
   });
 
   it('replaces the real webtorrent module', () => {
-    const client = new WebTorrent();
+    const client = createClient();
 
     expect(client).toBeInstanceOf(FakeWebTorrent);
     expect(FakeWebTorrent.instances).toEqual([client]);
   });
 
   it('emits metadata and ready with the simulated files', () => {
-    const client = new WebTorrent();
+    const client = createClient();
     const onTorrent = vi.fn();
     const torrent = client.add(MAGNET, onTorrent);
     const onMetadata = vi.fn();
@@ -42,7 +47,7 @@ describe('WebTorrent mock', () => {
   });
 
   it('tracks download progress, speed and peers', () => {
-    const client = new WebTorrent();
+    const client = createClient();
     const torrent = client.add(MAGNET);
     torrent.simulateMetadata({ files: [{ name: 'bunny.mp4', length: 1000 }] });
     const onDownload = vi.fn();
@@ -62,7 +67,7 @@ describe('WebTorrent mock', () => {
   });
 
   it('surfaces errors and supports removal', () => {
-    const client = new WebTorrent();
+    const client = createClient();
     const torrent = client.add(MAGNET);
     const onError = vi.fn();
     torrent.on('error', onError);
@@ -76,7 +81,7 @@ describe('WebTorrent mock', () => {
   });
 
   it('records the element a file is streamed to', () => {
-    const client = new WebTorrent();
+    const client = createClient();
     const torrent = client.add(MAGNET);
     torrent.simulateMetadata({ files: [{ name: 'bunny.mp4', length: 1000 }] });
     const video = document.createElement('video');

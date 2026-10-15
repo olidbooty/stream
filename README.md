@@ -4,7 +4,7 @@ Stream video from torrents in the browser using WebTorrent.
 
 ## Requirements
 
-Node.js 20.19+ (22 recommended, see `.nvmrc`).
+Node.js 24 LTS or newer (see `.nvmrc`).
 
 ## Getting started
 
@@ -24,8 +24,8 @@ For frontend work, `npm run dev` starts the Vite dev server with hot reload.
 
 ```
 client/          frontend source (Vite root)
-server/app.js    Express app (createApp), no port binding
-server/index.js  entry point: binds HOST/PORT
+server/app.ts    Express app (createApp), no port binding
+server/index.ts  entry point: binds HOST/PORT
 public/          build output served by Express (gitignored)
 test/mocks/      shared test doubles, e.g. the WebTorrent fake
 ```
@@ -34,11 +34,17 @@ test/mocks/      shared test doubles, e.g. the WebTorrent fake
 
 | Script               | What it does                       |
 | -------------------- | ---------------------------------- |
-| `npm start`          | Run the Express server             |
+| `npm start`          | Run the Express server (via tsx)   |
 | `npm run dev`        | Vite dev server                    |
 | `npm run build`      | Build the frontend into `public/`  |
+| `npm run typecheck`  | Type-check everything with `tsc`   |
 | `npm test`           | Run the test suite once            |
 | `npm run test:watch` | Run tests in watch mode            |
 | `npm run coverage`   | Run tests with coverage            |
+
+The code is TypeScript. `tsconfig.json` only type-checks (`noEmit`): Vite and
+Vitest transpile it themselves and `tsx` runs the server, so there is no
+compile step. Relative imports keep the `.js` extension (`./app.js` resolves
+to `app.ts`), as Node's ESM resolution expects.
 
 See [TESTING.md](TESTING.md) for test conventions.

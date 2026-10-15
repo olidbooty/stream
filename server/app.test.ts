@@ -1,3 +1,4 @@
+import type { Express } from 'express';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,8 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
 
 describe('createApp', () => {
-  let staticDir;
-  let app;
+  let staticDir: string;
+  let app: Express;
 
   beforeAll(() => {
     // A fixture directory keeps these tests independent of `npm run build`.

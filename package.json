@@ -5,12 +5,13 @@
   "description": "Stream video from torrents in the browser using WebTorrent",
   "type": "module",
   "engines": {
-    "node": ">=20.19"
+    "node": ">=24"
   },
   "scripts": {
-    "start": "node server/index.js",
+    "start": "tsx server/index.ts",
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage"
@@ -18,12 +19,18 @@
   "license": "ISC",
   "dependencies": {
     "express": "^5.3.0",
+    "tsx": "^4.23.15",
     "webtorrent": "^3.0.21"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "@types/supertest": "^7.2.1",
+    "@types/webtorrent": "^3.0.0",
     "@vitest/coverage-v8": "^5.0.5",
     "jsdom": "^29.1.1",
     "supertest": "^7.3.1",
+    "typescript": "^5.9.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
   }

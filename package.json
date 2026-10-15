@@ -1,0 +1,30 @@
+{
+  "name": "stream",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stream video from torrents in the browser using WebTorrent",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.3.0",
+    "webtorrent": "^3.0.21"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^5.0.5",
+    "jsdom": "^29.1.1",
+    "supertest": "^7.3.1",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  }
+}

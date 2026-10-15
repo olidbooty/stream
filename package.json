@@ -7,7 +7,9 @@
   "engines": {
     "node": ">=20.19"
   },
-  "scripts": {},
+  "scripts": {
+    "start": "node server/index.js"
+  },
   "license": "ISC",
   "dependencies": {
     "express": "^5.3.0",

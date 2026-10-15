@@ -4,7 +4,7 @@ Stream video from torrents in the browser using WebTorrent.
 
 ## Requirements
 
-Node.js 20.19+ (22 recommended, see `.nvmrc`).
+Node.js 24 LTS or newer (see `.nvmrc`).
 
 ## Getting started
 

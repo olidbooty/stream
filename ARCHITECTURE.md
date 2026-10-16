@@ -89,7 +89,7 @@ each file and picks the one to play. It is a pure function of the file list
 - **No codec checks yet.** The 4.1 audit (Decision #5) was meant to inform
   this filter but hasn't run: it needs `ffprobe` and real files. So an
   `.mp4` holding HEVC or AC-3 audio is still reported as `video`. Codec-level
-  checks come with 4.1 and 4.2.
+  checks come with 4.1 and 4.2 (Decision #17).
 - **Samples.** A video with the word `sample` or `samples` in its path that
   is under a quarter of the size of the largest video is a `sample`. The
   size check keeps a film called "The Sample" from being skipped, and a
@@ -106,8 +106,11 @@ each file and picks the one to play. It is a pure function of the file list
   samples, each group in path order. Paths compare numerically
   (`Episode 2` before `Episode 10`) with a fixed locale.
 
+These heuristics haven't been tried on real torrents yet (Decision #19).
+
 The choice doesn't change what is downloaded: WebTorrent still fetches every
-file in the torrent.
+file in the torrent, including samples, extras and other encodes
+(Decision #18).
 
 ## Target design
 
@@ -286,3 +289,7 @@ design stays next to the code.
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Open | With no peers, a magnet link never gets metadata and nothing times out or tells the user. Decide in 2.4, which can report WebTorrent's `noPeers` event, whether to show it and when to give up |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |
+| 17 | Media classification is by extension only | Open | The 4.1 codec audit (Decision #5) hasn't run, so 3.1 can't use it. An `.mp4` with HEVC or AC-3 is reported as `video`; an `.mkv` with H.264 is labelled "may not play". Revisit in 4.1/4.2 |
+| 18 | Whole torrent is downloaded, not just the chosen file | Open | Picking `mainFile` doesn't deselect samples, extras or other encodes, so they still use disk and bandwidth. Decide in 3.2/3.3 or 4.3 whether to deselect files that aren't being watched |
+| 19 | Main-file heuristics are unproven | Decided | Accepted for now: a sample is under 25% of the largest video, main-sized is at least a third. `.ts` (MPEG-TS) also matches TypeScript sources, and video inside `.rar`/`.zip` isn't found. Revisit after the manual tests with real torrents. See [Choosing the media file](#choosing-the-media-file) |
+| 20 | Subtitles need work before playback | Open | `.srt` can't be used in `<track>` without converting to WebVTT, subtitles aren't matched to a video or language, and `.ass`/`.ssa` and embedded MKV subtitles aren't detected. Decide in 3.4 |

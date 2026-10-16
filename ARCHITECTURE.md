@@ -72,6 +72,43 @@ later steps (3.1, 3.2) can address a file by it. File `path`s are relative to
 `DOWNLOAD_DIR`; `parse-torrent` normalises them, so `..` and absolute paths
 in a hostile `.torrent` can't place files outside it (Decision #16).
 
+### Choosing the media file
+
+Once the file list is known, `selectMedia()` in `server/media.ts` classifies
+each file and picks the one to play. It is a pure function of the file list
+(`index`, `name`, `path`, `length`), so it is unit-tested on its own.
+
+- **Classification is by extension only**, ignoring case. `.mp4`, `.m4v` and
+  `.webm` are `video`: every current browser plays them with common codecs.
+  `.mkv`, `.avi`, `.mov`, `.ogv` and other video containers are
+  `video-may-not-play` and still listed (Decision #3): Chrome often plays
+  `.mkv` with H.264 or VP9, and 4.2 will show the real error when it doesn't.
+  `.ogv` is in this group because Safari has never played Ogg and Chrome has
+  deprecated Theora. `.srt` and `.vtt` are flagged as `subtitle` for 3.4.
+  The full list is in the [README](README.md#api).
+- **No codec checks yet.** The 4.1 audit (Decision #5) was meant to inform
+  this filter but hasn't run: it needs `ffprobe` and real files. So an
+  `.mp4` holding HEVC or AC-3 audio is still reported as `video`. Codec-level
+  checks come with 4.1 and 4.2.
+- **Samples.** A video with the word `sample` or `samples` in its path that
+  is under a quarter of the size of the largest video is a `sample`. The
+  size check keeps a film called "The Sample" from being skipped, and a
+  torrent whose only video is a sample still plays it.
+- **Main-sized videos** are those at least a third of the size of the
+  largest video: both parts of a CD1/CD2 film, every episode of a season
+  (even next to a double-length finale), or two encodes of the same film.
+  Trailers and most extras are smaller.
+- **`mainFile`** is the first main-sized video in path order that should
+  play, or else the first one that may not. So a film's `.mp4` encode wins
+  over its larger `.mkv`, a season starts at episode 1, and a short `.mp4`
+  trailer never beats a full-length `.mkv`.
+- **`videos`** lists every video: main-sized ones, then smaller ones, then
+  samples, each group in path order. Paths compare numerically
+  (`Episode 2` before `Episode 10`) with a fixed locale.
+
+The choice doesn't change what is downloaded: WebTorrent still fetches every
+file in the torrent.
+
 ## Target design
 
 The torrent client runs **in the Node server**, not in the browser

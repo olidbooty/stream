@@ -4,7 +4,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
 import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
-import { MAX_TORRENT_FILE_BYTES, torrentsRouter } from './torrents-api.js';
+import { MAX_TORRENT_FILE_BYTES, torrentsRouter, type TorrentFileInfo } from './torrents-api.js';
 
 const HASH = '0123456789abcdef0123456789abcdef01234567';
 const MAGNET = `magnet:?xt=urn:btih:${HASH}&dn=Sintel`;
@@ -215,6 +215,8 @@ describe('/api/torrents', () => {
         ready: false,
         length: null,
         files: null,
+        mainFile: null,
+        videos: null,
       });
     });
 
@@ -231,10 +233,96 @@ describe('/api/torrents', () => {
         length: 129241752 + 1652 + 46115,
       });
       expect(res.body.files).toEqual([
-        { index: 0, name: 'Sintel.mp4', path: 'Sintel/Sintel.mp4', length: 129241752 },
-        { index: 1, name: 'Sintel.en.srt', path: 'Sintel/Sintel.en.srt', length: 1652 },
-        { index: 2, name: 'poster.jpg', path: 'Sintel/poster.jpg', length: 46115 },
+        {
+          index: 0,
+          name: 'Sintel.mp4',
+          path: 'Sintel/Sintel.mp4',
+          length: 129241752,
+          media: 'video',
+          sample: false,
+        },
+        {
+          index: 1,
+          name: 'Sintel.en.srt',
+          path: 'Sintel/Sintel.en.srt',
+          length: 1652,
+          media: 'subtitle',
+          sample: false,
+        },
+        {
+          index: 2,
+          name: 'poster.jpg',
+          path: 'Sintel/poster.jpg',
+          length: 46115,
+          media: 'other',
+          sample: false,
+        },
       ]);
+      expect(res.body).toMatchObject({ mainFile: 0, videos: [0] });
+    });
+
+    it('picks the video of a single-file torrent', async () => {
+      client.torrents[0].simulateMetadata({
+        name: 'bunny.mp4',
+        files: [{ name: 'bunny.mp4', path: 'bunny.mp4', length: 1000 }],
+      });
+
+      const res = await request(app).get(`/api/torrents/${HASH}`);
+
+      expect(res.body.files).toEqual([
+        {
+          index: 0,
+          name: 'bunny.mp4',
+          path: 'bunny.mp4',
+          length: 1000,
+          media: 'video',
+          sample: false,
+        },
+      ]);
+      expect(res.body).toMatchObject({ mainFile: 0, videos: [0] });
+    });
+
+    // Decision #3: the .mkv is listed as "may not play", and the full-length
+    // .mp4 encode is the main file. Videos sort numerically (720p before
+    // 1080p), with the sample last.
+    it('classifies each file of a multi-file torrent and picks the main one', async () => {
+      client.torrents[0].simulateMetadata({
+        name: 'Film',
+        files: [
+          { name: 'Film.1080p.MKV', path: 'Film/Film.1080p.MKV', length: 2000 },
+          { name: 'Film.en.srt', path: 'Film/Film.en.srt', length: 50 },
+          { name: 'film-sample.mkv', path: 'Film/Sample/film-sample.mkv', length: 40 },
+          { name: 'Film.720p.mp4', path: 'Film/Film.720p.mp4', length: 1100 },
+        ],
+      });
+
+      const res = await request(app).get(`/api/torrents/${HASH}`);
+
+      const files: TorrentFileInfo[] = res.body.files;
+      expect(files.map(({ index, media, sample }) => ({ index, media, sample }))).toEqual([
+        { index: 0, media: 'video-may-not-play', sample: false },
+        { index: 1, media: 'subtitle', sample: false },
+        { index: 2, media: 'video-may-not-play', sample: true },
+        { index: 3, media: 'video', sample: false },
+      ]);
+      expect(res.body.mainFile).toBe(3);
+      expect(res.body.videos).toEqual([3, 0, 2]);
+    });
+
+    it('reports no main file for a torrent without video', async () => {
+      client.torrents[0].simulateMetadata({
+        name: 'Album',
+        files: [
+          { name: '01.flac', path: 'Album/01.flac', length: 3000 },
+          { name: 'cover.jpg', path: 'Album/cover.jpg', length: 100 },
+        ],
+      });
+
+      const res = await request(app).get(`/api/torrents/${HASH}`);
+
+      const files: TorrentFileInfo[] = res.body.files;
+      expect(files.map((file) => file.media)).toEqual(['other', 'other']);
+      expect(res.body).toMatchObject({ mainFile: null, videos: [] });
     });
 
     it('lists files while existing data is still being verified', async () => {

@@ -3,6 +3,7 @@ import { access, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wrtc from 'webrtc-polyfill';
+import type { Instance as ParsedTorrent } from 'parse-torrent';
 import WebTorrent, { type Torrent } from 'webtorrent';
 
 export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(new URL('../downloads', import.meta.url));
@@ -53,9 +54,11 @@ export function createTorrentClient({
 }
 
 // Decision #4: files go in DOWNLOAD_DIR and are deleted when the torrent is removed.
+// Pass a parsed torrent where possible: given a string it can't parse, WebTorrent
+// tries it as a URL or file path.
 export function addTorrent(
   client: WebTorrent,
-  torrentId: string | Buffer,
+  torrentId: string | Uint8Array | ParsedTorrent,
   downloadDir: string,
 ): Torrent {
   const torrent = client.add(torrentId, { path: downloadDir, destroyStoreOnDestroy: true });

@@ -41,6 +41,30 @@ falls back to TCP only.
 
 For frontend work, `npm run dev` starts the Vite dev server with hot reload.
 
+## API
+
+There is no UI for torrents yet (2.5), so use the API directly:
+
+| Request | What it does |
+| ------- | ------------ |
+| `GET /api/torrents` | List torrents: info hash, name, magnet link, `ready` (metadata known), progress, peers, speeds |
+| `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
+| `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
+| `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files. `204`, or `404` if it isn't there |
+| `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
+
+Errors are JSON: `{"error": "..."}`.
+
+```sh
+curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/json' \
+  -d '{"magnet": "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel"}'
+curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/x-bittorrent' \
+  --data-binary @sintel.torrent
+```
+
+Torrents live in memory: after a restart the list is empty, but their files
+stay in `DOWNLOAD_DIR` (see Risks & Decisions #13).
+
 ## Layout
 
 ```
@@ -48,6 +72,8 @@ client/                   frontend source (Vite root)
 server/app.ts             Express app (createApp), no port binding
 server/index.ts           entry point: creates the torrent client, binds HOST/PORT
 server/torrent-client.ts  WebTorrent client setup, config from env vars
+server/torrents-api.ts    /api/torrents routes
+server/magnet.ts          magnet link validation
 public/                   build output served by Express (gitignored)
 downloads/                default DOWNLOAD_DIR (gitignored)
 test/mocks/               shared test doubles, e.g. the WebTorrent fake

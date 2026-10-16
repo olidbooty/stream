@@ -109,6 +109,14 @@ torrent would have deleted its files (`destroyStore` or
 `destroyStoreOnDestroy`). Like the real client, `get()` and `remove()` are
 async and `remove()` rejects for an unknown torrent, so `await` them.
 
+`add()` takes the info hash from a parsed torrent (what the API passes) or a
+hex magnet link, as the real client does. For anything else, such as a raw
+`.torrent` buffer, it uses a fixed default or the `infoHash` option.
+
+API tests that upload a `.torrent` file build one with `parse-torrent`'s
+`toTorrentFile()` (see `torrentFile()` in `server/torrents-api.test.ts`), so
+the real parser runs and no fixture file is needed.
+
 If the app starts using more of the WebTorrent API, add it to the fake (and
 to `test/mocks/webtorrent.test.ts`) rather than mocking ad hoc in each test.
 

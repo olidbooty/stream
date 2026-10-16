@@ -100,6 +100,15 @@ describe('WebTorrent mock', () => {
     expect(deleted.storeDestroyed).toBe(true);
   });
 
+  it('takes the info hash from a parsed torrent or a magnet link', () => {
+    const client = createClient();
+    const hash = 'f'.repeat(40);
+
+    expect(client.add({ infoHash: hash.toUpperCase() }).infoHash).toBe(hash);
+    expect(client.add(`magnet:?xt=urn:btih:${'a'.repeat(40)}`).infoHash).toBe('a'.repeat(40));
+    expect(client.add(new Uint8Array(4)).infoHash).toBe('0123456789abcdef0123456789abcdef01234567');
+  });
+
   it('reports its peer port once listening', () => {
     const client = new WebTorrent({ torrentPort: 51413 }) as unknown as FakeWebTorrent;
     const onListening = vi.fn();

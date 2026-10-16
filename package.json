@@ -19,6 +19,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^5.3.0",
+    "parse-torrent": "^11.0.24",
     "tsx": "^4.23.15",
     "webrtc-polyfill": "^1.2.2",
     "webtorrent": "^3.0.21"
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.2",
+    "@types/parse-torrent": "^11.0.1",
     "@types/supertest": "^7.2.1",
     "@types/webtorrent": "^3.0.0",
     "@vitest/coverage-v8": "^5.0.5",

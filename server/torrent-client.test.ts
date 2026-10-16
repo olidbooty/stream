@@ -1,12 +1,15 @@
-import { resolve } from 'node:path';
+import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import type WebTorrent from 'webtorrent';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeWebTorrent, type FakeTorrent } from '../test/mocks/webtorrent.js';
 import {
   DEFAULT_DOWNLOAD_DIR,
   addTorrent,
   createTorrentClient,
   destroyTorrentClient,
+  ensureDownloadDir,
   removeTorrent,
   torrentConfig,
 } from './torrent-client.js';
@@ -39,6 +42,43 @@ describe('torrentConfig', () => {
   });
 });
 
+describe('ensureDownloadDir', () => {
+  let parent: string;
+
+  beforeEach(() => {
+    parent = mkdtempSync(join(tmpdir(), 'stream-downloads-'));
+  });
+
+  afterEach(() => {
+    chmodSync(parent, 0o700);
+    rmSync(parent, { recursive: true, force: true });
+  });
+
+  it('creates a missing directory', async () => {
+    const dir = join(parent, 'nested', 'downloads');
+
+    await ensureDownloadDir(dir);
+
+    expect(statSync(dir).isDirectory()).toBe(true);
+  });
+
+  it('rejects a path that is a file', async () => {
+    const file = join(parent, 'not-a-dir');
+    writeFileSync(file, '');
+
+    await expect(ensureDownloadDir(file)).rejects.toThrow(
+      `DOWNLOAD_DIR ${file} is not a writable directory`,
+    );
+  });
+
+  // root can write anywhere, so this only means something as a normal user.
+  it.skipIf(process.getuid?.() === 0)('rejects a directory it cannot write to', async () => {
+    chmodSync(parent, 0o500);
+
+    await expect(ensureDownloadDir(parent)).rejects.toThrow('is not a writable directory');
+  });
+});
+
 describe('createTorrentClient', () => {
   it('passes the ports and a WebRTC implementation to WebTorrent', () => {
     createTorrentClient({ torrentPort: 51413, dhtPort: 51414 });
@@ -56,12 +96,27 @@ describe('addTorrent and removeTorrent', () => {
 
     const torrent = addTorrent(client, MAGNET, '/srv/downloads') as unknown as FakeTorrent;
     expect(torrent.path).toBe('/srv/downloads');
+    expect(torrent.listenerCount('error')).toBe(1);
 
     await removeTorrent(client, MAGNET);
 
     expect(torrent.destroyed).toBe(true);
     expect(torrent.storeDestroyed).toBe(true);
     expect(fake.torrents).toEqual([]);
+  });
+
+  it('keeps a torrent error off the client', () => {
+    const fake = new FakeWebTorrent();
+    const onClientError = vi.fn();
+    fake.on('error', onClientError);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const torrent = addTorrent(fake as unknown as WebTorrent, MAGNET, '/srv/downloads') as unknown as FakeTorrent;
+
+    torrent.simulateError(new Error('disk full'));
+
+    expect(onClientError).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('failed'), new Error('disk full'));
+    consoleError.mockRestore();
   });
 
   it('rejects removing a torrent the client does not have', async () => {

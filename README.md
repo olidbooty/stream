@@ -27,7 +27,7 @@ uTP, the DHT and WebRTC. It is configured with environment variables:
 | -------------- | ------------- | ------------ |
 | `PORT`         | `3000`        | HTTP port for the app |
 | `HOST`         | `0.0.0.0`     | HTTP bind address. The peer port always listens on all interfaces |
-| `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Removing a torrent deletes its files |
+| `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Created at startup if missing; must be writable. Removing a torrent deletes its files |
 | `TORRENT_PORT` | `0` (random)  | TCP/uTP port for incoming peers |
 | `DHT_PORT`     | `0` (random)  | UDP port for the DHT |
 

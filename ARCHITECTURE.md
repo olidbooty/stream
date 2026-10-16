@@ -103,6 +103,9 @@ const client = new WebTorrent({ torrentPort, dhtPort, tracker: { wrtc } });
   keep that is open until 2.6 (Risks & Decisions #7).
 - A peer port that is already in use makes the constructor emit `error`;
   `server/index.ts` logs it and exits with status 1.
+- A torrent's own errors (a bad store, invalid metadata) are re-emitted on
+  the client when the torrent has no `error` listener, which would stop the
+  server. `addTorrent()` always adds one, so a failing torrent only logs.
 - Destroy the client on `SIGINT`/`SIGTERM` so it stops announcing and closes
   its sockets. `server/index.ts` does this; a second signal exits at once.
 - `client.get()` and `client.remove()` are async. `remove()` rejects for an
@@ -119,6 +122,8 @@ In Node the default chunk store is `fs-chunk-store`, which writes the
 torrent's files under `os.tmpdir()/webtorrent`. Decision #4 keeps that store
 but moves it:
 
+- `ensureDownloadDir()` creates the directory at startup and checks it is
+  writable, so a bad `DOWNLOAD_DIR` fails before any torrent is added.
 - Downloads go in the directory set by `DOWNLOAD_DIR` (default `./downloads`
   in the repo, gitignored; a relative value resolves against the working
   directory), passed as the `path` option to `client.add()` by `addTorrent()`.

@@ -1,3 +1,5 @@
+import { constants } from 'node:fs';
+import { access, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wrtc from 'webrtc-polyfill';
@@ -31,6 +33,16 @@ export function torrentConfig(env: TorrentEnv = process.env): TorrentConfig {
   };
 }
 
+// Fail at startup with a clear message rather than when the first torrent writes.
+export async function ensureDownloadDir(downloadDir: string): Promise<void> {
+  try {
+    await mkdir(downloadDir, { recursive: true });
+    await access(downloadDir, constants.W_OK);
+  } catch (err) {
+    throw new Error(`DOWNLOAD_DIR ${downloadDir} is not a writable directory`, { cause: err });
+  }
+}
+
 // DHT, TCP and uTP are on by default. webtorrent@3 already loads webrtc-polyfill
 // through simple-peer; passing it explicitly keeps WebRTC from depending on that.
 export function createTorrentClient({
@@ -46,7 +58,13 @@ export function addTorrent(
   torrentId: string | Buffer,
   downloadDir: string,
 ): Torrent {
-  return client.add(torrentId, { path: downloadDir, destroyStoreOnDestroy: true });
+  const torrent = client.add(torrentId, { path: downloadDir, destroyStoreOnDestroy: true });
+  // A torrent error with no listener is re-emitted on the client, which the
+  // server treats as fatal. One bad torrent must not stop the others.
+  torrent.on('error', (err) => {
+    console.error(`torrent ${torrent.infoHash || String(torrentId)} failed:`, err);
+  });
+  return torrent;
 }
 
 // client.remove() rejects for an unknown torrent but reports the destroy through

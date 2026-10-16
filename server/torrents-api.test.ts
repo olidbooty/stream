@@ -1,5 +1,5 @@
 import express, { type Express } from 'express';
-import { toTorrentFile, type Instance as ParsedTorrent } from 'parse-torrent';
+import parseTorrent, { toTorrentFile, type Instance as ParsedTorrent } from 'parse-torrent';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
@@ -182,13 +182,97 @@ describe('/api/torrents', () => {
           infoHash: HASH,
           name: 'Sintel',
           magnetURI: torrent.magnetURI,
+          hasMetadata: true,
           ready: true,
+          length: 1000,
           progress: 0.25,
           numPeers: 3,
           downloadSpeed: 500,
           uploadSpeed: 0,
         },
       ]);
+    });
+  });
+
+  describe('GET /:infoHash', () => {
+    const SINTEL_FILES = [
+      { name: 'Sintel.mp4', path: 'Sintel/Sintel.mp4', length: 129241752 },
+      { name: 'Sintel.en.srt', path: 'Sintel/Sintel.en.srt', length: 1652 },
+      { name: 'poster.jpg', path: 'Sintel/poster.jpg', length: 46115 },
+    ];
+
+    beforeEach(async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+    });
+
+    it('reports pending metadata for a new magnet link', async () => {
+      const res = await request(app).get(`/api/torrents/${HASH}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        infoHash: HASH,
+        hasMetadata: false,
+        ready: false,
+        length: null,
+        files: null,
+      });
+    });
+
+    it('lists files and sizes once the metadata arrives', async () => {
+      client.torrents[0].simulateMetadata({ name: 'Sintel', files: SINTEL_FILES });
+
+      const res = await request(app).get(`/api/torrents/${HASH.toUpperCase()}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        name: 'Sintel',
+        hasMetadata: true,
+        ready: true,
+        length: 129241752 + 1652 + 46115,
+      });
+      expect(res.body.files).toEqual([
+        { index: 0, name: 'Sintel.mp4', path: 'Sintel/Sintel.mp4', length: 129241752 },
+        { index: 1, name: 'Sintel.en.srt', path: 'Sintel/Sintel.en.srt', length: 1652 },
+        { index: 2, name: 'poster.jpg', path: 'Sintel/poster.jpg', length: 46115 },
+      ]);
+    });
+
+    it('lists files while existing data is still being verified', async () => {
+      client.torrents[0].simulateMetadata({ name: 'Sintel', files: SINTEL_FILES, ready: false });
+
+      const res = await request(app).get(`/api/torrents/${HASH}`);
+
+      expect(res.body).toMatchObject({ hasMetadata: true, ready: false });
+      expect(res.body.files).toHaveLength(3);
+    });
+
+    // The API reports parse-torrent's paths and WebTorrent stores files under
+    // them, so this guards against an upgrade that stops normalising them.
+    it('relies on parse-torrent keeping hostile paths inside the download dir', async () => {
+      const info = {
+        name: '..',
+        'piece length': 16384,
+        pieces: new Uint8Array(20),
+        files: [
+          { path: ['..', '..', 'etc', 'evil'], length: 10 },
+          { path: ['/abs'], length: 5 },
+        ],
+      };
+      const parsed = await parseTorrent(toTorrentFile({ info } as unknown as ParsedTorrent));
+
+      expect(parsed.files?.map((file) => file.path)).toEqual(['etc/evil', 'abs']);
+    });
+
+    it('returns 404 for a torrent that was never added', async () => {
+      const res = await request(app).get(`/api/torrents/${'f'.repeat(40)}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 400 for something that is not an info hash', async () => {
+      const res = await request(app).get('/api/torrents/not-a-hash');
+
+      expect(res.status).toBe(400);
     });
   });
 

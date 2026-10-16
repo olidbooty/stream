@@ -47,13 +47,20 @@ There is no UI for torrents yet (2.5), so use the API directly:
 
 | Request | What it does |
 | ------- | ------------ |
-| `GET /api/torrents` | List torrents: info hash, name, magnet link, `ready` (metadata known), progress, peers, speeds |
+| `GET /api/torrents` | List torrents: info hash, name, magnet link, `hasMetadata`, `ready`, total `length`, progress, peers, speeds |
+| `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length). While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files` and `length` are `null` |
 | `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
 | `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
 | `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files. `204`, or `404` if it isn't there |
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
 
 Errors are JSON: `{"error": "..."}`.
+
+`hasMetadata` turns true as soon as the file list is known. `ready` follows
+once WebTorrent has also checked any data already on disk, which can take a
+while for a large torrent that was partly downloaded before. A `.torrent`
+upload has its metadata straight away; a magnet link waits until a peer
+sends it, and with no peers it stays pending.
 
 ```sh
 curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/json' \

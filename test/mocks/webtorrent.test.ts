@@ -46,6 +46,24 @@ describe('WebTorrent mock', () => {
     expect(await client.get(MAGNET)).toBe(torrent);
   });
 
+  it('can report metadata before the torrent is ready', () => {
+    const client = createClient();
+    const torrent = client.add(MAGNET);
+    const onReady = vi.fn();
+    torrent.on('ready', onReady);
+
+    expect(torrent.metadata).toBeNull();
+    torrent.simulateMetadata({ files: [{ name: 'bunny.mp4', length: 1000 }], ready: false });
+
+    expect(torrent.metadata).not.toBeNull();
+    expect(torrent.ready).toBe(false);
+    expect(onReady).not.toHaveBeenCalled();
+
+    torrent.simulateReady();
+    expect(torrent.ready).toBe(true);
+    expect(onReady).toHaveBeenCalledOnce();
+  });
+
   it('tracks download progress, speed and peers', () => {
     const client = createClient();
     const torrent = client.add(MAGNET);

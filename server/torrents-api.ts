@@ -1,4 +1,4 @@
-import express, { Router, type ErrorRequestHandler, type Response } from 'express';
+import express, { Router, type ErrorRequestHandler, type Request, type Response } from 'express';
 import parseTorrent, { toMagnetURI, type Instance as ParsedTorrent } from 'parse-torrent';
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
@@ -16,17 +16,43 @@ export interface TorrentsRouterOptions {
   downloadDir: string;
 }
 
-// What the list shows per torrent. Files and sizes come with metadata in 2.3,
-// and live progress is pushed in 2.4.
+// What the list shows per torrent. Live progress is pushed in 2.4.
 export interface TorrentSummary {
   infoHash: string;
   name: string | null;
   magnetURI: string;
+  // False while a magnet link's metadata is still being fetched from peers.
+  hasMetadata: boolean;
+  // True once WebTorrent has also checked any data already on disk, so the
+  // files can be streamed. Can lag hasMetadata for a large existing download.
   ready: boolean;
+  // Total size in bytes; null until the metadata arrives.
+  length: number | null;
   progress: number;
   numPeers: number;
   downloadSpeed: number;
   uploadSpeed: number;
+}
+
+export interface TorrentFileInfo {
+  // Position in the torrent; stable, so later steps can address files by it.
+  index: number;
+  name: string;
+  // Relative to DOWNLOAD_DIR, e.g. "Sintel/Sintel.mp4" for a multi-file torrent.
+  path: string;
+  length: number;
+}
+
+// One torrent with its files; files is null while the metadata is pending.
+export interface TorrentDetail extends TorrentSummary {
+  files: TorrentFileInfo[] | null;
+}
+
+// `metadata` is set as soon as the info dictionary arrives. `ready` comes
+// later, after WebTorrent verifies existing data, so it would hide the files
+// of a large torrent for no reason.
+function hasMetadata(torrent: Torrent): boolean {
+  return torrent.metadata != null;
 }
 
 // Right after add() the real client hasn't parsed the torrent yet, so the
@@ -36,11 +62,27 @@ function summarize(torrent: Torrent, parsed?: ParsedTorrent): TorrentSummary {
     infoHash: torrent.infoHash || (parsed?.infoHash ?? ''),
     name: torrent.name || parsed?.name || null,
     magnetURI: torrent.magnetURI || (parsed ? toMagnetURI(parsed) : ''),
+    hasMetadata: hasMetadata(torrent),
     ready: torrent.ready,
+    length: hasMetadata(torrent) ? torrent.length : null,
     progress: torrent.progress,
     numPeers: torrent.numPeers,
     downloadSpeed: torrent.downloadSpeed,
     uploadSpeed: torrent.uploadSpeed,
+  };
+}
+
+function describe(torrent: Torrent): TorrentDetail {
+  return {
+    ...summarize(torrent),
+    files: hasMetadata(torrent)
+      ? torrent.files.map((file, index) => ({
+          index,
+          name: file.name,
+          path: file.path,
+          length: file.length,
+        }))
+      : null,
   };
 }
 
@@ -53,6 +95,18 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
 
   const findTorrent = (infoHash: string): Torrent | undefined =>
     client.torrents.find((torrent) => torrent.infoHash === infoHash);
+
+  // Resolves :infoHash, or sends the 400/404 and returns undefined.
+  const torrentFromParams = (req: Request, res: Response): Torrent | undefined => {
+    const infoHash = String(req.params.infoHash);
+    if (!INFO_HASH.test(infoHash)) {
+      sendError(res, 400, 'infoHash must be 40 hex characters');
+      return undefined;
+    }
+    const torrent = findTorrent(infoHash.toLowerCase());
+    if (!torrent) sendError(res, 404, 'No torrent with that info hash');
+    return torrent;
+  };
 
   router.get('/', (req, res) => {
     res.json(client.torrents.map((torrent) => summarize(torrent)));
@@ -108,15 +162,17 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
     },
   );
 
+  // 200 either way: a torrent still fetching its metadata is a normal state,
+  // reported as hasMetadata: false with files and length null.
+  router.get('/:infoHash', (req, res) => {
+    const torrent = torrentFromParams(req, res);
+    if (torrent) res.json(describe(torrent));
+  });
+
   router.delete('/:infoHash', async (req, res) => {
-    const { infoHash } = req.params;
-    if (!INFO_HASH.test(infoHash)) {
-      return sendError(res, 400, 'infoHash must be 40 hex characters');
-    }
-    if (!findTorrent(infoHash.toLowerCase())) {
-      return sendError(res, 404, 'No torrent with that info hash');
-    }
-    await removeTorrent(client, infoHash.toLowerCase());
+    const torrent = torrentFromParams(req, res);
+    if (!torrent) return;
+    await removeTorrent(client, torrent.infoHash);
     res.status(204).end();
   });
 

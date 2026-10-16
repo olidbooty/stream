@@ -84,6 +84,8 @@ export class FakeTorrent extends EventEmitter {
   numPeers = 0;
   progress = 0;
   ready = false;
+  // The real client stores the .torrent file here once metadata arrives.
+  metadata: Uint8Array | null = null;
   done = false;
   destroyed = false;
   // Whether destroy() would have deleted the downloaded files.
@@ -105,16 +107,24 @@ export class FakeTorrent extends EventEmitter {
     this.magnetURI = typeof torrentId === 'string' ? torrentId : `magnet:?xt=urn:btih:${infoHash}`;
   }
 
-  // Metadata arrives: files become known and the torrent is ready to stream.
+  // Metadata arrives: files become known and, unless `ready: false`, the
+  // torrent is ready to stream. The real client can take a while between the
+  // two while it verifies existing data; simulateReady() finishes that.
   simulateMetadata({
     name = 'fixture',
     files = [],
-  }: { name?: string; files?: (FakeFile | FakeFileOptions)[] } = {}): void {
+    ready = true,
+  }: { name?: string; files?: (FakeFile | FakeFileOptions)[]; ready?: boolean } = {}): void {
     this.name = name;
     this.files = files.map((file) => (file instanceof FakeFile ? file : new FakeFile(file)));
     this.length = this.files.reduce((total, file) => total + file.length, 0);
-    this.ready = true;
+    this.metadata = new Uint8Array(0);
     this.emit('metadata');
+    if (ready) this.simulateReady();
+  }
+
+  simulateReady(): void {
+    this.ready = true;
     this.emit('ready');
   }
 

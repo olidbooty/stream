@@ -93,7 +93,10 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
 `as unknown as FakeWebTorrent` (see `createClient()` in
 `test/mocks/webtorrent.test.ts`). Then drive the swarm with the test-only helpers:
 
-- `torrent.simulateMetadata({ name, files: [{ name, length }] })` emits `metadata` and `ready`
+- `torrent.simulateMetadata({ name, files: [{ name, length, path }] })` sets
+  `torrent.metadata`, emits `metadata` and then `ready`. Pass `ready: false`
+  to stop after `metadata`, as the real client does while it verifies data
+  on disk, then call `torrent.simulateReady()`
 - `torrent.simulateDownload(bytes, { downloadSpeed, numPeers })` emits `download`
 - `torrent.simulateDone()` emits `done`
 - `torrent.simulateNoPeers()` emits `noPeers`

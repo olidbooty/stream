@@ -18,7 +18,11 @@ describe('createApp', () => {
     staticDir = mkdtempSync(join(tmpdir(), 'stream-public-'));
     writeFileSync(join(staticDir, 'index.html'), '<!doctype html><title>stream</title>');
     client = new FakeWebTorrent();
-    app = createApp({ staticDir, client: client as unknown as WebTorrent });
+    app = createApp({
+      staticDir,
+      downloadDir: join(staticDir, 'downloads'),
+      client: client as unknown as WebTorrent,
+    });
   });
 
   afterAll(() => {

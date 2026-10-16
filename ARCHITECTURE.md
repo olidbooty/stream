@@ -12,16 +12,46 @@ browser                                   Node (server/)
 │ client/index.html            │  GET /   │ createApp({ client })         │
 │ client/src/main.ts (bundled  │ ───────▶ │   express.static(public/)     │
 │ by Vite into public/assets/) │          │   GET /api/client (status)    │
-└──────────────────────────────┘          │   404 for everything else     │
+└──────────────────────────────┘          │   /api/torrents (add, list,   │
+                                          │     remove)                   │
+                                          │   404 for everything else     │
                                           │ WebTorrent client (index.ts)  │
                                           │   TCP, uTP, DHT, WebRTC       │
                                           └───────────────────────────────┘
 ```
 
 `server/index.ts` creates the client with `createTorrentClient()` from
-`server/torrent-client.ts` and passes it to `createApp()`. There are no
-torrent routes yet; `addTorrent()` and `removeTorrent()` in the same module
-apply Decision #4 and are what 2.2's routes will call.
+`server/torrent-client.ts` and passes it to `createApp()`. The routes in
+`server/torrents-api.ts` add torrents with `addTorrent()` and remove them with
+`removeTorrent()`, which apply Decision #4. The API is listed in the
+[README](README.md#api).
+
+### Adding torrents safely
+
+`client.add()` accepts far more than magnet links and `.torrent` files: a
+string it can't parse is fetched as an HTTP(S) URL or read as a **file path on
+the server**. So the API never passes user input straight to it:
+
+1. A magnet link must pass `isMagnetURI()` (`server/magnet.ts`): `magnet:?`
+   with a v1 `urn:btih:` info hash, at most 8 KiB.
+2. Magnets and uploaded `.torrent` files are parsed with `parse-torrent`, which
+   gives the info hash and rejects bad files with `400`.
+3. The *parsed* object is passed to `addTorrent()`, so WebTorrent doesn't
+   re-interpret the input.
+
+The info hash is checked against `client.torrents` first, so adding a torrent
+twice returns `409` instead of WebTorrent's asynchronous "Cannot add duplicate
+torrent" error. Two requests for the same new torrent at the same instant can
+both pass that check; WebTorrent then destroys the second and logs it.
+
+Uploads are the raw request body with `Content-Type: application/x-bittorrent`
+rather than multipart form data, so no upload library is needed; the browser
+can `fetch()` a `File` directly. The body is capped at 10 MiB, about the size
+of a 100 GB torrent's file with 256 KiB pieces.
+
+Not supported: v2-only (`urn:btmh:`) magnets, which `parse-torrent` can't give
+an info hash for, and `.torrent` URLs, which would make the server fetch
+arbitrary URLs.
 
 ## Target design
 
@@ -168,6 +198,13 @@ The peer port (`TORRENT_PORT`, TCP and uTP) and `DHT_PORT` always listen on
 all interfaces, and with UPnP/NAT-PMP on, WebTorrent may forward the peer port
 on the router by itself (Decisions #7 and #8).
 
+`/api/torrents` has no authentication (Decision #12). A torrent also makes
+the server contact hosts its adder chose: trackers (`tr=`, `announce`), web
+seeds (`ws=`, `url-list`) and a magnet's `xs=` URL, which WebTorrent fetches
+over HTTP to get metadata. Someone on the LAN could use that to make the
+server send requests to other hosts, including ones on the LAN
+(Decision #11).
+
 ## Decisions
 
 These live in the Risks & Decisions tab of the
@@ -187,3 +224,7 @@ design stays next to the code.
 | 8 | Peer port listens on all interfaces | Decided | Accepted. Peers must reach it, so `HOST` only limits the HTTP port. See [Network exposure](#network-exposure) |
 | 9 | 2.1 not yet checked against a real swarm | Open | Startup, `/api/client` and shutdown were checked; joining TCP/uTP, DHT and WebRTC swarms needs a manual check before 2.6 |
 | 10 | Native modules without prebuilt binaries | Open | `utp-native` has no Linux ARM build (falls back to TCP); `node-datachannel` downloads its binary at install or builds with CMake. Matters for a Raspberry Pi host |
+| 11 | Torrents make the server contact hosts the adder chose | Open | Trackers, web seeds and magnet `xs=` URLs come from the torrent. Decide before 2.5 whether to strip `xs=`/web seeds or limit them to public addresses. See [Network exposure](#network-exposure) |
+| 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
+| 13 | Torrent list is in memory only | Open | A restart forgets all torrents, but their files stay in `DOWNLOAD_DIR` and are never deleted. Decide before 4.3 whether to restore torrents on startup or clean up orphaned files |
+| 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |

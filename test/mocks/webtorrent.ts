@@ -7,6 +7,18 @@ import { EventEmitter } from 'node:events';
 
 const DEFAULT_INFO_HASH = '0123456789abcdef0123456789abcdef01234567';
 
+// Like the real client, take the info hash from a parsed torrent or a hex
+// magnet link. Anything else (a .torrent buffer) gets the default.
+function infoHashOf(torrentId: unknown): string | undefined {
+  if (typeof torrentId === 'object' && torrentId !== null && 'infoHash' in torrentId) {
+    return String(torrentId.infoHash).toLowerCase();
+  }
+  if (typeof torrentId === 'string') {
+    return /xt=urn:btih:([0-9a-f]{40})/i.exec(torrentId)?.[1].toLowerCase();
+  }
+  return undefined;
+}
+
 type Callback = (err: Error | null) => void;
 type TorrentCallback = (torrent: FakeTorrent) => void;
 
@@ -79,7 +91,11 @@ export class FakeTorrent extends EventEmitter {
 
   constructor(
     torrentId: unknown,
-    { infoHash = DEFAULT_INFO_HASH, path, destroyStoreOnDestroy = false }: FakeTorrentOptions = {},
+    {
+      infoHash = infoHashOf(torrentId) ?? DEFAULT_INFO_HASH,
+      path,
+      destroyStoreOnDestroy = false,
+    }: FakeTorrentOptions = {},
   ) {
     super();
     this.torrentId = torrentId;

@@ -29,7 +29,7 @@ client.on('error', (err) => {
   process.exit(1);
 });
 
-const server = createApp({ client }).listen(port, host, () => {
+const server = createApp({ client, downloadDir: config.downloadDir }).listen(port, host, () => {
   console.log(`stream listening on http://localhost:${port}`);
   if (host === '0.0.0.0') {
     for (const address of lanAddresses()) {

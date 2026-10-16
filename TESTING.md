@@ -24,6 +24,33 @@ Test files sit next to the code they cover and end in `.test.ts`.
 with supertest and pass `staticDir` a fixture directory, so tests do not
 depend on `npm run build` or bind a port (see `server/app.test.ts`).
 
+## Client tests
+
+`client/src/main.ts` is the entry point and runs as soon as it is imported,
+so don't test it directly. Put logic in its own modules that take what they
+need as arguments (a root element, a WebTorrent client) and keep `main.ts`
+to wiring them together. Then a test builds its own DOM:
+
+```ts
+import { afterEach, expect, it } from 'vitest';
+import { renderTorrentForm } from './torrent-form.js';
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
+
+it('rejects an invalid magnet link', () => {
+  const root = document.createElement('main');
+  document.body.append(root);
+
+  renderTorrentForm(root);
+  // ...fill in the input, submit, assert on root
+});
+```
+
+Pure functions (magnet validation, picking the media file in 3.1) need no
+DOM at all; prefer them where you can.
+
 ## Mocking WebTorrent
 
 jsdom has no WebRTC and cannot play video, so client unit tests never use a
@@ -54,5 +81,34 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
 If the app starts using more of the WebTorrent API, add it to the fake (and
 to `test/mocks/webtorrent.test.ts`) rather than mocking ad hoc in each test.
 
+The fake follows the real API for the parts it implements, but it is not a
+full copy: for example `streamTo` works without `client.createServer()`,
+which the real client requires (see
+[ARCHITECTURE.md](ARCHITECTURE.md#streaming-to-video)). When the app starts
+relying on such behaviour, make the fake enforce it too.
+
+## Manual testing in a browser
+
 Real playback, codecs and peer connectivity can only be checked in a real
-browser.
+browser. Until 4.5 adds a Playwright test, check them by hand:
+
+1. `npm run build && npm start`, then open `http://localhost:3000`. Use
+   `npm run dev` for quick UI work, but check streaming against the built
+   app too, since service worker scope and asset paths differ.
+2. Use a torrent that has WebRTC seeders. The browser client can't reach
+   ordinary BitTorrent peers (see
+   [ARCHITECTURE.md](ARCHITECTURE.md#peers)), so most public torrents show
+   zero peers. WebTorrent's own demo torrent, Sintel
+   (`https://webtorrent.io/torrents/sintel.torrent`), is seeded over WebRTC.
+3. For a torrent you control, seed it with a WebRTC-capable client
+   (WebTorrent Desktop, or `webtorrent-hybrid`) and announce it to a
+   `wss://` tracker.
+4. Check the browser console for errors, and for M4 steps watch the
+   `<video>` element's `waiting` and `stalled` events.
+5. Service workers need a secure context. `http://localhost` qualifies,
+   LAN URLs don't, so streaming tests from another device need HTTPS.
+
+Only use content you have the right to share: open-licensed films such as
+Sintel or Big Buck Bunny, or files you made yourself.
+
+Record what you checked by hand in the pull request description.

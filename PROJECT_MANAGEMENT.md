@@ -12,6 +12,7 @@ the plan.
 | Code, branches and pull requests | This repository |
 | Setup and scripts | [README.md](README.md) |
 | Test conventions | [TESTING.md](TESTING.md) |
+| Design, WebTorrent constraints and decisions taken | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 The tracker is private to the project owner's Google account. Ask the owner for
 access if the link doesn't open for you.
@@ -98,12 +99,38 @@ The Dashboard shows live progress for each milestone.
    Add or update tests as described in [TESTING.md](TESTING.md). There is no CI
    yet, so these local runs are the only check.
 6. Open a pull request against `main`, with the step ID and name in the title.
-   PRs are merged with a merge commit.
+   PRs are merged with a merge commit. In the description, cover:
+   - what the step delivers, and anything from its row it doesn't
+   - decisions made, with the Risks & Decisions number
+   - how it was tested: the automated tests added, plus anything checked by
+     hand in a browser (see [TESTING.md](TESTING.md#manual-testing-in-a-browser))
+   - follow-ups for later steps
+
+   If the step changes how things are set up, run, tested or structured,
+   update [README.md](README.md), [TESTING.md](TESTING.md) or
+   [ARCHITECTURE.md](ARCHITECTURE.md) in the same PR.
 7. Once it's merged, set the step to `Done` and fill in its Completed Date.
    That unblocks dependent steps and updates their planned dates.
 
 If a step can't continue, set its Status to `Blocked` and note why in
 Technical Notes / Risks. If the reason is a decision, add it to Risks & Decisions.
+
+## Decisions
+
+The Risks & Decisions tab lists open questions and the step each must be
+settled before. Don't start that step while its decision is `Open`.
+
+To record a decision:
+
+1. Fill in Decision / Outcome with what was chosen and the main reason, and
+   set Status to `Decided`. Use `Dropped` if the question no longer applies.
+2. Summarise it in [ARCHITECTURE.md](ARCHITECTURE.md#open-decisions) if it
+   shapes the code, so the reasoning sits next to it in the repo.
+3. If it changes the plan, update the affected Tracker rows (steps, estimates,
+   dependencies or notes) as described in [Changing the plan](#changing-the-plan).
+
+A decision that needs a spike to answer (for example, whether browser peers
+are enough) can be its own step. Add it before the step it unblocks.
 
 ## Changing the plan
 

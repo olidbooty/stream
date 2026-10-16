@@ -47,6 +47,15 @@ Vitest transpile it themselves and `tsx` runs the server, so there is no
 compile step. Relative imports keep the `.js` extension (`./app.js` resolves
 to `app.ts`), as Node's ESM resolution expects.
 
+## Code style
+
+There is no linter or formatter yet, so match the existing code: 2-space
+indent, single quotes, semicolons, trailing commas in multi-line literals,
+and `import type` for type-only imports (`verbatimModuleSyntax` enforces it).
+Comments explain why, not what.
+
 See [TESTING.md](TESTING.md) for test conventions.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together and
+the WebTorrent constraints that shape the design.
 See [PROJECT_MANAGEMENT.md](PROJECT_MANAGEMENT.md) for the project tracker and
 how work is planned.

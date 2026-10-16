@@ -14,6 +14,7 @@ browser                                   Node (server/)
 │ by Vite into public/assets/) │          │   GET /api/client (status)    │
 └──────────────────────────────┘          │   /api/torrents (add, list,   │
                                           │     remove)                   │
+                                          │   /api/torrents/events (SSE)  │
                                           │   404 for everything else     │
                                           │ WebTorrent client (index.ts)  │
                                           │   TCP, uTP, DHT, WebRTC       │
@@ -42,7 +43,8 @@ the server**. So the API never passes user input straight to it:
 The info hash is checked against `client.torrents` first, so adding a torrent
 twice returns `409` instead of WebTorrent's asynchronous "Cannot add duplicate
 torrent" error. Two requests for the same new torrent at the same instant can
-both pass that check; WebTorrent then destroys the second and logs it.
+both pass that check; WebTorrent then destroys one of them (not always the
+later one) and logs it, and the other keeps running.
 
 Uploads are the raw request body with `Content-Type: application/x-bittorrent`
 rather than multipart form data, so no upload library is needed; the browser
@@ -67,10 +69,60 @@ already on disk, which for a large, partly downloaded torrent can take a
 while. Both are reported; the file list doesn't wait for `ready`.
 
 A magnet link whose swarm has no peers stays pending indefinitely; nothing
-times out (Decision #15). File `index` is the torrent's own file order, so
+times out, but its state turns to `noPeers` (Decision #15, see
+[State and events](#state-and-events)). File `index` is the torrent's own file order, so
 later steps (3.1, 3.2) can address a file by it. File `path`s are relative to
 `DOWNLOAD_DIR`; `parse-torrent` normalises them, so `..` and absolute paths
 in a hostile `.torrent` can't place files outside it (Decision #16).
+
+### State and events
+
+Every torrent summary carries a `state`, worked out by `torrentState()` in
+`server/torrent-state.ts` from the torrent's fields each time it is read, so
+`GET /api/torrents`, `GET /api/torrents/:infoHash` and the event stream always
+agree:
+
+| State | When |
+| ----- | ---- |
+| `error` | WebTorrent hit an error and destroyed the torrent |
+| `seeding` | `torrent.done`: every file is on disk. It keeps uploading while it is in the client, peers or not |
+| `noPeers` | No peer connected, and WebTorrent's `noPeers` check has fired since the last one did |
+| `connecting` | Looking for peers, fetching a magnet link's metadata from them, or checking data already on disk |
+| `downloading` | Metadata known and at least one peer connected |
+
+WebTorrent only reports two of these through events, so `TorrentWatch`
+remembers them:
+
+- **`noPeers`.** Every 30 seconds WebTorrent emits `noPeers` once for each
+  discovery source (`tracker`, `dht`, `lsd`, `ut_pex`) that has found no
+  peers. LSD and PEX find none for almost every torrent, so the event alone
+  says little; the state only counts it while `numPeers` (connected wires) is
+  0, and a `wire` event clears it. A new torrent therefore shows `connecting`
+  for about 30 seconds before `noPeers`.
+- **Errors.** A torrent error destroys the torrent (deleting its files, since
+  `destroyStoreOnDestroy` is set) and removes it from `client.torrents` before
+  `error` is emitted, so it would simply vanish. `TorrentWatch` keeps its last
+  summary with `state: 'error'` and `errorMessage` until it is deleted
+  (`DELETE` answers `204`) or the same torrent is added again, which is how
+  the user retries. At most 50 are kept. It ignores the error WebTorrent gives
+  the duplicate when one torrent is added twice at once. `addTorrent()` still
+  attaches its own logging `error` listener, so torrent errors never reach the
+  client's fatal handler.
+
+`GET /api/torrents/events` is a [server-sent events][sse] stream of the same
+list as `GET /api/torrents`, as `torrents` events. `EventStream`
+(`server/event-stream.ts`) sends it on connect, then checks once a second and
+sends it again only if it changed. While anything transfers, speeds change
+every second, so an active swarm still updates each second; an idle list costs
+nothing but a `: keep-alive` comment every 15 seconds, which stops proxies and
+browsers from dropping a quiet stream. One timer serves every connection and
+runs only while one is open. It reads the list rather than listening to
+torrents, so removing a torrent leaves no listeners behind, and a client whose
+socket buffer is full is skipped until it drains, then gets the latest list.
+`server.closeAllConnections()` in `server/index.ts` ends open streams on
+shutdown.
+
+[sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
 
 ## Target design
 
@@ -247,5 +299,5 @@ design stays next to the code.
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
 | 13 | Torrent list is in memory only | Open | A restart forgets all torrents, but their files stay in `DOWNLOAD_DIR` and are never deleted. Decide before 4.3 whether to restore torrents on startup or clean up orphaned files |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
-| 15 | Magnet metadata can stay pending forever | Open | With no peers, a magnet link never gets metadata and nothing times out or tells the user. Decide in 2.4, which can report WebTorrent's `noPeers` event, whether to show it and when to give up |
+| 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |

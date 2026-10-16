@@ -39,6 +39,14 @@ const app = createApp({ staticDir, client: client as unknown as WebTorrent });
 Streaming routes return byte ranges, so assert on the status (`206`/`416`),
 `Content-Range` and the body length, not just `200`.
 
+Server-sent events never end, so supertest can't read them. Test the pieces
+instead: `EventStream` with a fake sink and `vi.useFakeTimers()`
+(`server/event-stream.test.ts`), and the state rules as a pure function
+(`server/torrent-state.test.ts`). The one end-to-end check starts the router
+on an ephemeral port with `app.listen(0)`, reads events with `fetch` and a
+stream reader, then aborts (see `GET /events` in
+`server/torrents-api.test.ts`).
+
 ## Client tests
 
 `client/src/main.ts` is the entry point and runs as soon as it is imported,
@@ -98,9 +106,15 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
   to stop after `metadata`, as the real client does while it verifies data
   on disk, then call `torrent.simulateReady()`
 - `torrent.simulateDownload(bytes, { downloadSpeed, numPeers })` emits `download`
+- `torrent.simulateWire()` connects a peer: adds one to `numPeers` and emits `wire`
 - `torrent.simulateDone()` emits `done`
-- `torrent.simulateNoPeers()` emits `noPeers`
-- `torrent.simulateError(err)` / `client.simulateError(err)` emit `error`
+- `torrent.simulateNoPeers(source)` emits `noPeers` with `'tracker'`, `'dht'`,
+  `'lsd'` or `'ut_pex'`
+- `torrent.simulateError(err)` fails the torrent as the real client does: it
+  is destroyed (deleting its store with `destroyStoreOnDestroy`) and removed
+  from `client.torrents`, then `error` is emitted on the torrent, or on the
+  client if the torrent has no `error` listener, then `close`
+- `client.simulateError(err)` emits `error` on the client
 - `file.streamTo(element)` records the element in `file.streamedTo`
 - `client.simulateListening(port)` emits `listening` and makes `address()`
   return the port (it returns `null` before that and after `destroy()`)

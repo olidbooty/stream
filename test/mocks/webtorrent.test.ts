@@ -84,19 +84,64 @@ describe('WebTorrent mock', () => {
     expect(torrent.progress).toBe(1);
   });
 
-  it('surfaces errors and supports removal', async () => {
+  it('supports removal', async () => {
     const client = createClient();
     const torrent = client.add(MAGNET);
-    const onError = vi.fn();
-    torrent.on('error', onError);
+    const onRemove = vi.fn();
+    client.on('remove', onRemove);
 
-    torrent.simulateError(new Error('boom'));
     await client.remove(MAGNET);
 
-    expect(onError).toHaveBeenCalledWith(new Error('boom'));
     expect(torrent.destroyed).toBe(true);
     expect(torrent.storeDestroyed).toBe(false);
     expect(client.torrents).toEqual([]);
+    expect(onRemove).toHaveBeenCalledWith(torrent);
+  });
+
+  it('destroys and removes a torrent that fails, like the real client', () => {
+    const client = createClient();
+    const torrent = client.add(MAGNET, { destroyStoreOnDestroy: true });
+    const events: string[] = [];
+    torrent.on('error', (err: Error) => {
+      // Already gone from the list by the time 'error' is emitted.
+      events.push(`error ${err.message} ${client.torrents.length}`);
+    });
+    torrent.on('close', () => events.push('close'));
+
+    torrent.simulateError(new Error('boom'));
+
+    expect(events).toEqual(['error boom 0', 'close']);
+    expect(torrent.destroyed).toBe(true);
+    expect(torrent.storeDestroyed).toBe(true);
+  });
+
+  it('sends a torrent error to the client when the torrent has no listener', () => {
+    const client = createClient();
+    const torrent = client.add(MAGNET);
+    const onClientError = vi.fn();
+    client.on('error', onClientError);
+
+    torrent.simulateError(new Error('boom'));
+
+    expect(onClientError).toHaveBeenCalledWith(new Error('boom'));
+    expect(client.torrents).toEqual([]);
+  });
+
+  it('counts connected peers and reports when a source finds none', () => {
+    const client = createClient();
+    const torrent = client.add(MAGNET);
+    const onWire = vi.fn();
+    const onNoPeers = vi.fn();
+    torrent.on('wire', onWire);
+    torrent.on('noPeers', onNoPeers);
+
+    torrent.simulateNoPeers('dht');
+    torrent.simulateWire();
+    torrent.simulateWire();
+
+    expect(onNoPeers).toHaveBeenCalledWith('dht');
+    expect(onWire).toHaveBeenCalledTimes(2);
+    expect(torrent.numPeers).toBe(2);
   });
 
   it('rejects removing an unknown torrent, like the real client', async () => {

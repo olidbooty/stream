@@ -22,6 +22,10 @@ function infoHashOf(torrentId: unknown): string | undefined {
 type Callback = (err: Error | null) => void;
 type TorrentCallback = (torrent: FakeTorrent) => void;
 
+// Where a noPeers check found nothing. The real client checks each enabled
+// source every 30 seconds.
+export type FakeAnnounceType = 'tracker' | 'dht' | 'lsd' | 'ut_pex';
+
 export interface FakeFileOptions {
   name: string;
   length?: number;
@@ -69,6 +73,8 @@ export class FakeFile {
 }
 
 export class FakeTorrent extends EventEmitter {
+  // Set by FakeWebTorrent.add(), like the real torrent's `client`.
+  client: FakeWebTorrent | null = null;
   torrentId: unknown;
   infoHash: string;
   path: string | undefined;
@@ -146,17 +152,34 @@ export class FakeTorrent extends EventEmitter {
     this.emit('done');
   }
 
-  simulateNoPeers(announceType: 'tracker' | 'dht' | 'lsd' = 'tracker'): void {
+  simulateNoPeers(announceType: FakeAnnounceType = 'tracker'): void {
     this.emit('noPeers', announceType);
   }
 
-  simulateError(error: Error = new Error('fake torrent error')): void {
-    this.emit('error', error);
+  // A peer connects: numPeers counts connected wires, as in the real client.
+  simulateWire(): void {
+    this.numPeers += 1;
+    this.emit('wire', {}, `127.0.0.1:${6880 + this.numPeers}`);
+  }
+
+  // Like the real client, an error destroys the torrent (deleting its files
+  // with destroyStoreOnDestroy) and removes it from client.torrents before
+  // 'error' is emitted. With no 'error' listener it goes to the client instead.
+  simulateError(error: Error | string = new Error('fake torrent error')): void {
+    if (this.destroyed) return;
+    const client = this.client;
+    client?.detach(this);
+    this.destroyed = true;
+    this.storeDestroyed = this.destroyStoreOnDestroy;
+    if (this.listenerCount('error') === 0 && client) client.emit('error', error);
+    else this.emit('error', error);
+    this.emit('close');
   }
 
   destroy(opts?: FakeDestroyOptions | Callback, callback?: Callback): void {
     const cb = typeof opts === 'function' ? opts : callback;
     const options = typeof opts === 'function' ? {} : (opts ?? {});
+    if (this.destroyed) return void cb?.(null);
     this.destroyed = true;
     this.storeDestroyed = options.destroyStore ?? this.destroyStoreOnDestroy;
     this.emit('close');
@@ -216,6 +239,7 @@ export class FakeWebTorrent extends EventEmitter {
     const options = typeof opts === 'function' ? {} : (opts ?? {});
     const callback = typeof opts === 'function' ? opts : ontorrent;
     const torrent = new FakeTorrent(torrentId, options);
+    torrent.client = this;
 
     this.torrents.push(torrent);
     if (callback) torrent.once('ready', () => callback(torrent));
@@ -246,10 +270,18 @@ export class FakeWebTorrent extends EventEmitter {
     const options = typeof opts === 'function' ? {} : (opts ?? {});
     const torrent = this.find(torrentId);
     if (!torrent) throw new Error(`No torrent with id ${String(torrentId)}`);
-    this.torrents = this.torrents.filter((t) => t !== torrent);
+    this.detach(torrent);
     torrent.destroy(options);
-    this.emit('remove', torrent);
     cb?.(null);
+  }
+
+  // Drops a torrent from the list and emits 'remove', as the real client's
+  // _remove() does for both remove() and a torrent that failed.
+  detach(torrent: FakeTorrent): void {
+    const index = this.torrents.indexOf(torrent);
+    if (index === -1) return;
+    this.torrents.splice(index, 1);
+    this.emit('remove', torrent);
   }
 
   destroy(callback?: Callback): void {

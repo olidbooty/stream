@@ -47,11 +47,12 @@ There is no UI for torrents yet (2.5), so use the API directly:
 
 | Request | What it does |
 | ------- | ------------ |
-| `GET /api/torrents` | List torrents: info hash, name, magnet link, `hasMetadata`, `ready`, total `length`, progress, peers, speeds |
+| `GET /api/torrents` | List torrents: info hash, name, magnet link, `hasMetadata`, `ready`, total `length`, progress, peers, speeds, `state` and `errorMessage` |
+| `GET /api/torrents/events` | The same list as a [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream of `torrents` events: sent at once, then whenever it changes, at most once a second |
 | `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length). While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files` and `length` are `null` |
 | `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
 | `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
-| `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files. `204`, or `404` if it isn't there |
+| `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files, or clear a failed one. `204`, or `404` if it isn't there |
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
 
 Errors are JSON: `{"error": "..."}`.
@@ -60,14 +61,33 @@ Errors are JSON: `{"error": "..."}`.
 once WebTorrent has also checked any data already on disk, which can take a
 while for a large torrent that was partly downloaded before. A `.torrent`
 upload has its metadata straight away; a magnet link waits until a peer
-sends it, and with no peers it stays pending.
+sends it, and with no peers it stays pending (`state` turns to `noPeers`).
+
+`state` is one of:
+
+| `state` | Meaning |
+| ------- | ------- |
+| `connecting` | Looking for peers, fetching a magnet link's metadata, or checking data already on disk |
+| `downloading` | Has its metadata and at least one peer |
+| `seeding` | Finished: every file is downloaded. It keeps uploading while it is listed |
+| `noPeers` | No peer connected for about 30 seconds or more. It keeps looking until you remove it |
+| `error` | It failed, and WebTorrent stopped it and deleted its files. `errorMessage` says why; `files` is `null`. It stays listed until you delete it or add it again to retry |
 
 ```sh
 curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/json' \
   -d '{"magnet": "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel"}'
 curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/x-bittorrent' \
   --data-binary @sintel.torrent
+curl -N localhost:3000/api/torrents/events   # Ctrl+C to stop
 ```
+
+```
+event: torrents
+data: [{"infoHash":"08ada5a7…","name":"Sintel",…,"numPeers":0,"state":"noPeers","errorMessage":null}]
+```
+
+In the browser, `new EventSource('/api/torrents/events')` reconnects by itself
+if the server restarts.
 
 Torrents live in memory: after a restart the list is empty, but their files
 stay in `DOWNLOAD_DIR` (see Risks & Decisions #13).
@@ -80,6 +100,8 @@ server/app.ts             Express app (createApp), no port binding
 server/index.ts           entry point: creates the torrent client, binds HOST/PORT
 server/torrent-client.ts  WebTorrent client setup, config from env vars
 server/torrents-api.ts    /api/torrents routes
+server/torrent-state.ts   torrent state (connecting, noPeers, ...) and failed torrents
+server/event-stream.ts    server-sent events broadcaster
 server/magnet.ts          magnet link validation
 public/                   build output served by Express (gitignored)
 downloads/                default DOWNLOAD_DIR (gitignored)

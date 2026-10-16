@@ -3,6 +3,7 @@ import parseTorrent, { toMagnetURI, type Instance as ParsedTorrent } from 'parse
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
 import { isMagnetURI } from './magnet.js';
+import { selectMedia, type FileMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
 
 // A .torrent file holds 20 bytes per piece, so even a 100 GB torrent with
@@ -34,7 +35,8 @@ export interface TorrentSummary {
   uploadSpeed: number;
 }
 
-export interface TorrentFileInfo {
+// media and sample come from selectMedia() (server/media.ts).
+export interface TorrentFileInfo extends FileMedia {
   // Position in the torrent; stable, so later steps can address files by it.
   index: number;
   name: string;
@@ -43,9 +45,14 @@ export interface TorrentFileInfo {
   length: number;
 }
 
-// One torrent with its files; files is null while the metadata is pending.
+// One torrent with its files. files, mainFile and videos are null while the
+// metadata is pending; mainFile is also null when there is no video.
 export interface TorrentDetail extends TorrentSummary {
   files: TorrentFileInfo[] | null;
+  // Index of the file to play by default.
+  mainFile: number | null;
+  // Indexes of every video file, in the order to list them.
+  videos: number[] | null;
 }
 
 // `metadata` is set as soon as the info dictionary arrives. `ready` comes
@@ -73,17 +80,18 @@ function summarize(torrent: Torrent, parsed?: ParsedTorrent): TorrentSummary {
 }
 
 function describe(torrent: Torrent): TorrentDetail {
-  return {
-    ...summarize(torrent),
-    files: hasMetadata(torrent)
-      ? torrent.files.map((file, index) => ({
-          index,
-          name: file.name,
-          path: file.path,
-          length: file.length,
-        }))
-      : null,
-  };
+  if (!hasMetadata(torrent)) {
+    return { ...summarize(torrent), files: null, mainFile: null, videos: null };
+  }
+  const { files, mainFile, videos } = selectMedia(
+    torrent.files.map((file, index) => ({
+      index,
+      name: file.name,
+      path: file.path,
+      length: file.length,
+    })),
+  );
+  return { ...summarize(torrent), files, mainFile, videos };
 }
 
 function sendError(res: Response, status: number, error: string, extra: object = {}): void {

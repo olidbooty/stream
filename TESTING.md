@@ -67,8 +67,9 @@ The browser doesn't run WebTorrent (see [ARCHITECTURE.md](ARCHITECTURE.md)),
 so client tests stub the server's API, for example by passing in a fake
 `fetch`, rather than mocking WebTorrent.
 
-Pure functions (magnet validation, picking the media file in 3.1) need no
-DOM at all; prefer them where you can.
+Pure functions such as `isMagnetURI()` (`server/magnet.ts`) and
+`selectMedia()` (`server/media.ts`) need no DOM or fake client at all;
+prefer them where you can.
 
 ## Mocking WebTorrent
 

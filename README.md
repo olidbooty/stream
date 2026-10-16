@@ -48,7 +48,7 @@ There is no UI for torrents yet (2.5), so use the API directly:
 | Request | What it does |
 | ------- | ------------ |
 | `GET /api/torrents` | List torrents: info hash, name, magnet link, `hasMetadata`, `ready`, total `length`, progress, peers, speeds |
-| `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length). While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files` and `length` are `null` |
+| `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length, `media`, `sample`), the `mainFile` to play and the `videos` to list. While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files`, `length`, `mainFile` and `videos` are `null` |
 | `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
 | `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
 | `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files. `204`, or `404` if it isn't there |
@@ -61,6 +61,22 @@ once WebTorrent has also checked any data already on disk, which can take a
 while for a large torrent that was partly downloaded before. A `.torrent`
 upload has its metadata straight away; a magnet link waits until a peer
 sends it, and with no peers it stays pending.
+
+Each file's `media` is one of:
+
+| `media` | Extensions |
+| ------- | ---------- |
+| `video` | `.mp4`, `.m4v`, `.webm`: should play in any current browser |
+| `video-may-not-play` | `.mkv`, `.avi`, `.mov`, `.wmv`, `.flv`, `.ts`, `.m2ts`, `.mts`, `.mpg`, `.mpeg`, `.vob`, `.ogv`, `.ogm`, `.3gp`, `.3g2`, `.asf`, `.f4v`, `.divx`, `.rm`, `.rmvb`: worth trying, but the browser may refuse it |
+| `subtitle` | `.srt`, `.vtt` |
+| `other` | anything else |
+
+Only the extension is checked (case-insensitive), not the codecs inside.
+`sample` is `true` for a video that looks like a short sample clip.
+`mainFile` is the index of the video to play by default, or `null` if there
+is none; `videos` lists the index of every video in the order to show them.
+How they are chosen is in
+[ARCHITECTURE.md](ARCHITECTURE.md#choosing-the-media-file).
 
 ```sh
 curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/json' \
@@ -81,6 +97,7 @@ server/index.ts           entry point: creates the torrent client, binds HOST/PO
 server/torrent-client.ts  WebTorrent client setup, config from env vars
 server/torrents-api.ts    /api/torrents routes
 server/magnet.ts          magnet link validation
+server/media.ts           classifies a torrent's files and picks the one to play
 public/                   build output served by Express (gitignored)
 downloads/                default DOWNLOAD_DIR (gitignored)
 test/mocks/               shared test doubles, e.g. the WebTorrent fake

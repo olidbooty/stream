@@ -24,9 +24,9 @@ Test files sit next to the code they cover and end in `.test.ts`.
 with supertest and pass `staticDir` a fixture directory, so tests do not
 depend on `npm run build` or bind a port (see `server/app.test.ts`).
 
-Once the server has a torrent client (step 2.1), `createApp()` takes it as
-an option. Tests pass a `FakeWebTorrent` instead, so no test opens a peer
-port or touches the network:
+`createApp()` also requires the torrent client. Tests pass a
+`FakeWebTorrent` instead, so no test opens a peer port or touches the
+network:
 
 ```ts
 import type WebTorrent from 'webtorrent';
@@ -99,14 +99,21 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
 - `torrent.simulateNoPeers()` emits `noPeers`
 - `torrent.simulateError(err)` / `client.simulateError(err)` emit `error`
 - `file.streamTo(element)` records the element in `file.streamedTo`
+- `client.simulateListening(port)` emits `listening` and makes `address()`
+  return the port (it returns `null` before that and after `destroy()`)
+
+The fake also records what the server passes in: `client.opts` (ports,
+`tracker.wrtc`), `torrent.path` from `add()`'s `path` option, and
+`torrent.storeDestroyed`, which is `true` when removing or destroying the
+torrent would have deleted its files (`destroyStore` or
+`destroyStoreOnDestroy`). Like the real client, `get()` and `remove()` are
+async and `remove()` rejects for an unknown torrent, so `await` them.
 
 If the app starts using more of the WebTorrent API, add it to the fake (and
 to `test/mocks/webtorrent.test.ts`) rather than mocking ad hoc in each test.
 
-The fake was written for a browser client and doesn't cover what the server
-will use yet: `file.createReadStream({ start, end })` for streaming, the
-client's `listening` event and `address()`, and the `path` option on `add()`.
-Add them as the steps that need them start. The fake is plain TypeScript on
+The fake doesn't cover `file.createReadStream({ start, end })` yet; 3.2 adds
+it for streaming. The fake is plain TypeScript on
 `node:events`, so it works in both the `server` and `client` test projects.
 
 ## Manual testing

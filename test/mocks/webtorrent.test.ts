@@ -24,7 +24,7 @@ describe('WebTorrent mock', () => {
     expect(FakeWebTorrent.instances).toEqual([client]);
   });
 
-  it('emits metadata and ready with the simulated files', () => {
+  it('emits metadata and ready with the simulated files', async () => {
     const client = createClient();
     const onTorrent = vi.fn();
     const torrent = client.add(MAGNET, onTorrent);
@@ -43,7 +43,7 @@ describe('WebTorrent mock', () => {
     expect(onTorrent).toHaveBeenCalledWith(torrent);
     expect(torrent.files.map((file) => file.name)).toEqual(['bunny.mp4', 'poster.jpg']);
     expect(torrent.length).toBe(1024);
-    expect(client.get(MAGNET)).toBe(torrent);
+    expect(await client.get(MAGNET)).toBe(torrent);
   });
 
   it('tracks download progress, speed and peers', () => {
@@ -66,18 +66,53 @@ describe('WebTorrent mock', () => {
     expect(torrent.progress).toBe(1);
   });
 
-  it('surfaces errors and supports removal', () => {
+  it('surfaces errors and supports removal', async () => {
     const client = createClient();
     const torrent = client.add(MAGNET);
     const onError = vi.fn();
     torrent.on('error', onError);
 
     torrent.simulateError(new Error('boom'));
-    client.remove(MAGNET);
+    await client.remove(MAGNET);
 
     expect(onError).toHaveBeenCalledWith(new Error('boom'));
     expect(torrent.destroyed).toBe(true);
+    expect(torrent.storeDestroyed).toBe(false);
     expect(client.torrents).toEqual([]);
+  });
+
+  it('rejects removing an unknown torrent, like the real client', async () => {
+    const client = createClient();
+
+    await expect(client.remove(MAGNET)).rejects.toThrow('No torrent with id');
+  });
+
+  it('records the download path and whether the store is deleted', async () => {
+    const client = createClient();
+    const kept = client.add(MAGNET, { path: '/downloads' });
+    const deleted = client.add('other', { infoHash: 'f'.repeat(40), destroyStoreOnDestroy: true });
+
+    expect(kept.path).toBe('/downloads');
+    await client.remove(MAGNET, { destroyStore: true });
+    await client.remove('other');
+
+    expect(kept.storeDestroyed).toBe(true);
+    expect(deleted.storeDestroyed).toBe(true);
+  });
+
+  it('reports its peer port once listening', () => {
+    const client = new WebTorrent({ torrentPort: 51413 }) as unknown as FakeWebTorrent;
+    const onListening = vi.fn();
+    client.on('listening', onListening);
+
+    expect(client.address()).toBeNull();
+    client.simulateListening();
+
+    expect(onListening).toHaveBeenCalledOnce();
+    expect(client.address()).toMatchObject({ port: 51413 });
+
+    client.destroy();
+    expect(client.address()).toBeNull();
   });
 
   it('records the element a file is streamed to', () => {

@@ -8,12 +8,20 @@ for the plan see [PROJECT_MANAGEMENT.md](PROJECT_MANAGEMENT.md).
 
 ```
 browser                                   Node (server/)
-┌──────────────────────────────┐          ┌───────────────────────────┐
-│ client/index.html            │  GET /   │ createApp() (Express 5)   │
-│ client/src/main.ts (bundled  │ ───────▶ │ express.static(public/)   │
-│ by Vite into public/assets/) │          │ 404 for everything else   │
-└──────────────────────────────┘          └───────────────────────────┘
+┌──────────────────────────────┐          ┌───────────────────────────────┐
+│ client/index.html            │  GET /   │ createApp({ client })         │
+│ client/src/main.ts (bundled  │ ───────▶ │   express.static(public/)     │
+│ by Vite into public/assets/) │          │   GET /api/client (status)    │
+└──────────────────────────────┘          │   404 for everything else     │
+                                          │ WebTorrent client (index.ts)  │
+                                          │   TCP, uTP, DHT, WebRTC       │
+                                          └───────────────────────────────┘
 ```
+
+`server/index.ts` creates the client with `createTorrentClient()` from
+`server/torrent-client.ts` and passes it to `createApp()`. There are no
+torrent routes yet; `addTorrent()` and `removeTorrent()` in the same module
+apply Decision #4 and are what 2.2's routes will call.
 
 ## Target design
 
@@ -64,7 +72,8 @@ and it uploads to the swarm while it has a torrent (see [Seeding](#seeding)).
 
 ## WebTorrent in Node
 
-Checked against the installed `webtorrent@3`.
+Checked against the installed `webtorrent@3.0.21`. `server/torrent-client.ts`
+implements this.
 
 ### Creating the client
 
@@ -72,23 +81,33 @@ Checked against the installed `webtorrent@3`.
 import WebTorrent from 'webtorrent';
 import wrtc from 'webrtc-polyfill';
 
-const client = new WebTorrent({ tracker: { wrtc } });
+const client = new WebTorrent({ torrentPort, dhtPort, tracker: { wrtc } });
 ```
 
 - **DHT, TCP and uTP** are on by default. uTP uses the optional native
   `utp-native` package; if it fails to install, WebTorrent falls back to TCP
   only.
-- **WebRTC** needs an implementation passed as `tracker.wrtc`.
-  `webrtc-polyfill` (backed by `node-datachannel`, a native module) is
-  already installed as a dependency of WebTorrent's own packages. Step 2.1
-  should add it to `package.json` as a direct dependency rather than rely on
-  that.
+- **WebRTC** uses `webrtc-polyfill` (backed by `node-datachannel`, a native
+  module). In `webtorrent@3` its peer library, `@thaunknown/simple-peer`,
+  already imports the polyfill, so WebRTC works even without `tracker.wrtc`.
+  We still pass it and list `webrtc-polyfill` in `package.json`, so WebRTC
+  doesn't rely on another package's import.
 - `client.on('listening')` fires once it is bound; `client.address()` gives
-  the peer port. Set it with the `torrentPort` and `dhtPort` options so it
-  can be forwarded on the router. Without incoming connections the client
-  still works, but finds fewer peers.
+  the peer port. Set it with `TORRENT_PORT` and `DHT_PORT` (both default to
+  `0`, a random port) so it can be forwarded on the router. Without incoming
+  connections the client still works, but finds fewer peers.
+- The peer port binds to `0.0.0.0` whatever `HOST` says. `HOST` only
+  restricts the HTTP port (Risks & Decisions #8).
+- **UPnP and NAT-PMP are on by default**: once listening, the client asks the
+  router to forward the peer port, without any setting from us. Whether to
+  keep that is open until 2.6 (Risks & Decisions #7).
+- A peer port that is already in use makes the constructor emit `error`;
+  `server/index.ts` logs it and exits with status 1.
 - Destroy the client on `SIGINT`/`SIGTERM` so it stops announcing and closes
-  its sockets.
+  its sockets. `server/index.ts` does this; a second signal exits at once.
+- `client.get()` and `client.remove()` are async. `remove()` rejects for an
+  unknown torrent but reports the destroy itself through its callback, so
+  `removeTorrent()` waits for both.
 
 Pass the client into `createApp()` rather than creating it there, so tests
 can hand in the fake (see [TESTING.md](TESTING.md#mocking-webtorrent)) and no
@@ -100,10 +119,12 @@ In Node the default chunk store is `fs-chunk-store`, which writes the
 torrent's files under `os.tmpdir()/webtorrent`. Decision #4 keeps that store
 but moves it:
 
-- Downloads go in the directory set by `DOWNLOAD_DIR` (default `./downloads`,
-  gitignored), passed as the `path` option to `client.add()` (2.1).
-- Removing a torrent deletes its files, with `client.remove(id, { destroyStore: true })`
-  or `destroyStoreOnDestroy: true` when adding it.
+- Downloads go in the directory set by `DOWNLOAD_DIR` (default `./downloads`
+  in the repo, gitignored; a relative value resolves against the working
+  directory), passed as the `path` option to `client.add()` by `addTorrent()`.
+- Removing a torrent deletes its files: `addTorrent()` sets
+  `destroyStoreOnDestroy: true` and `removeTorrent()` passes
+  `destroyStore: true`.
 - A limit on the directory's total size comes in 4.3.
 
 ### Streaming
@@ -138,6 +159,10 @@ fill the disk. That is acceptable for a home network; set `HOST=127.0.0.1`
 to keep it to one machine. Never expose the HTTP port to the internet. Only
 the peer port should be forwarded.
 
+The peer port (`TORRENT_PORT`, TCP and uTP) and `DHT_PORT` always listen on
+all interfaces, and with UPnP/NAT-PMP on, WebTorrent may forward the peer port
+on the router by itself (Decisions #7 and #8).
+
 ## Decisions
 
 These live in the Risks & Decisions tab of the
@@ -153,3 +178,7 @@ design stays next to the code.
 | 4 | Chunk store / storage strategy | Decided | Default `fs-chunk-store` in `DOWNLOAD_DIR` (default `./downloads`). Removing a torrent deletes its files; 4.3 adds a size limit. See [Storage](#storage) |
 | 5 | Run the codec audit (4.1) early on test files | Decided | Yes. 4.1 now depends on 2.3 instead of 3.1, so test files are checked with `ffprobe` before playback work and 3.1's filter can use the results |
 | 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |
+| 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Open | On by default since 2.1: the router is asked to forward the peer port. Decide in 2.6 |
+| 8 | Peer port listens on all interfaces | Decided | Accepted. Peers must reach it, so `HOST` only limits the HTTP port. See [Network exposure](#network-exposure) |
+| 9 | 2.1 not yet checked against a real swarm | Open | Startup, `/api/client` and shutdown were checked; joining TCP/uTP, DHT and WebRTC swarms needs a manual check before 2.6 |
+| 10 | Native modules without prebuilt binaries | Open | `utp-native` has no Linux ARM build (falls back to TCP); `node-datachannel` downloads its binary at install or builds with CMake. Matters for a Raspberry Pi host |

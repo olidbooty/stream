@@ -20,16 +20,37 @@ The server binds to `0.0.0.0`, so other devices on your network can open the
 LAN URLs it prints at startup. Set `HOST=127.0.0.1` to keep it local, or
 `PORT` to change the port.
 
+`npm start` also starts the WebTorrent client, which joins swarms over TCP,
+uTP, the DHT and WebRTC. It is configured with environment variables:
+
+| Variable       | Default       | What it sets |
+| -------------- | ------------- | ------------ |
+| `PORT`         | `3000`        | HTTP port for the app |
+| `HOST`         | `0.0.0.0`     | HTTP bind address. The peer port always listens on all interfaces |
+| `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Removing a torrent deletes its files |
+| `TORRENT_PORT` | `0` (random)  | TCP/uTP port for incoming peers |
+| `DHT_PORT`     | `0` (random)  | UDP port for the DHT |
+
+The peer port is printed at startup and returned by `GET /api/client`.
+`Ctrl+C` destroys the client cleanly so it stops announcing to the swarm.
+
+WebRTC and uTP use native modules (`node-datachannel`, `utp-native`) that
+install prebuilt binaries. On a platform without one, such as Linux on ARM,
+npm needs a C++ toolchain to build them; if `utp-native` fails, WebTorrent
+falls back to TCP only.
+
 For frontend work, `npm run dev` starts the Vite dev server with hot reload.
 
 ## Layout
 
 ```
-client/          frontend source (Vite root)
-server/app.ts    Express app (createApp), no port binding
-server/index.ts  entry point: binds HOST/PORT
-public/          build output served by Express (gitignored)
-test/mocks/      shared test doubles, e.g. the WebTorrent fake
+client/                   frontend source (Vite root)
+server/app.ts             Express app (createApp), no port binding
+server/index.ts           entry point: creates the torrent client, binds HOST/PORT
+server/torrent-client.ts  WebTorrent client setup, config from env vars
+public/                   build output served by Express (gitignored)
+downloads/                default DOWNLOAD_DIR (gitignored)
+test/mocks/               shared test doubles, e.g. the WebTorrent fake
 ```
 
 ## Scripts

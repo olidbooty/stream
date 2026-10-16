@@ -97,14 +97,21 @@ test opens a real port.
 ### Storage
 
 In Node the default chunk store is `fs-chunk-store`, which writes the
-torrent's files under `os.tmpdir()/webtorrent`. Set the `path` option on
-`client.add()` to a configurable download directory, and decide how and when
-finished torrents are removed (Decision #4).
+torrent's files under `os.tmpdir()/webtorrent`. Decision #4 keeps that store
+but moves it:
+
+- Downloads go in the directory set by `DOWNLOAD_DIR` (default `./downloads`,
+  gitignored), passed as the `path` option to `client.add()` (2.1).
+- Removing a torrent deletes its files, with `client.remove(id, { destroyStore: true })`
+  or `destroyStoreOnDestroy: true` when adding it.
+- A limit on the directory's total size comes in 4.3.
 
 ### Streaming
 
 `file.createReadStream({ start, end })` returns a stream for a byte range and
-prioritises the pieces it covers. Serve it from an Express route that:
+prioritises the pieces it covers. The torrent's piece strategy already defaults
+to `sequential` in `webtorrent@3`, so no custom piece selection is needed
+(Decision #2); 3.3 checks this while seeking. Serve it from an Express route that:
 
 - parses the `Range` header and responds `206` with `Content-Range`, or `416`
   for a range outside the file
@@ -141,8 +148,8 @@ design stays next to the code.
 | # | Decision | Status | Outcome |
 | - | -------- | ------ | ------- |
 | 1 | Browser-side WebTorrent vs. a Node-side client streaming over HTTP | Decided | Node-side, so TCP, uTP and DHT peers are reachable as well as WebRTC. See [Why not in the browser](#why-not-in-the-browser) |
-| 2 | Whether explicit sequential piece selection is needed | Open | `createReadStream` already prioritises the requested range; verify while seeking in 3.3 |
-| 3 | Whether to list `.mkv` and similar with a warning | Open | |
-| 4 | Chunk store / storage strategy | Open | Now a disk question: download directory (2.1), size limit and cleanup (4.3) |
-| 5 | Run the codec audit (4.1) early on test files | Open | |
+| 2 | Whether explicit sequential piece selection is needed | Decided | No. `webtorrent@3` defaults to the `sequential` strategy and `createReadStream` fetches the requested range first. 3.3 checks seeking and reopens this only if playback stalls |
+| 3 | Whether to list `.mkv` and similar with a warning | Decided | Yes. 3.1 lists `.mkv`, `.avi`, `.mov` and other video files marked "may not play" next to `.mp4`/`.webm`. 4.2 shows the real playback error; 4.4 can remux |
+| 4 | Chunk store / storage strategy | Decided | Default `fs-chunk-store` in `DOWNLOAD_DIR` (default `./downloads`). Removing a torrent deletes its files; 4.3 adds a size limit. See [Storage](#storage) |
+| 5 | Run the codec audit (4.1) early on test files | Decided | Yes. 4.1 now depends on 2.3 instead of 3.1, so test files are checked with `ffprobe` before playback work and 3.1's filter can use the results |
 | 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |

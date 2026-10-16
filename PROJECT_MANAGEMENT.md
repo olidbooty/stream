@@ -84,7 +84,7 @@ The Dashboard shows live progress for each milestone.
 ## Working on a step
 
 1. Check the step shows `Ready` in the Tracker, and read its row in
-   Risks & Decisions if it has one. For example, the chunk store has to be
+   Risks & Decisions if it has one. For example, the chunk store had to be
    chosen before step 2.1.
 2. Set its Status to `In Progress` and fill in Actual Start.
 3. Branch off the latest `main`.

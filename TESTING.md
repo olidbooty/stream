@@ -24,10 +24,59 @@ Test files sit next to the code they cover and end in `.test.ts`.
 with supertest and pass `staticDir` a fixture directory, so tests do not
 depend on `npm run build` or bind a port (see `server/app.test.ts`).
 
+Once the server has a torrent client (step 2.1), `createApp()` takes it as
+an option. Tests pass a `FakeWebTorrent` instead, so no test opens a peer
+port or touches the network:
+
+```ts
+import type WebTorrent from 'webtorrent';
+import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
+
+const client = new FakeWebTorrent();
+const app = createApp({ staticDir, client: client as unknown as WebTorrent });
+```
+
+Streaming routes return byte ranges, so assert on the status (`206`/`416`),
+`Content-Range` and the body length, not just `200`.
+
+## Client tests
+
+`client/src/main.ts` is the entry point and runs as soon as it is imported,
+so don't test it directly. Put logic in its own modules that take what they
+need as arguments (a root element, an API helper) and keep `main.ts`
+to wiring them together. Then a test builds its own DOM:
+
+```ts
+import { afterEach, expect, it } from 'vitest';
+import { renderTorrentForm } from './torrent-form.js';
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
+
+it('rejects an invalid magnet link', () => {
+  const root = document.createElement('main');
+  document.body.append(root);
+
+  renderTorrentForm(root);
+  // ...fill in the input, submit, assert on root
+});
+```
+
+The browser doesn't run WebTorrent (see [ARCHITECTURE.md](ARCHITECTURE.md)),
+so client tests stub the server's API, for example by passing in a fake
+`fetch`, rather than mocking WebTorrent.
+
+Pure functions (magnet validation, picking the media file in 3.1) need no
+DOM at all; prefer them where you can.
+
 ## Mocking WebTorrent
 
-jsdom has no WebRTC and cannot play video, so client unit tests never use a
-real swarm. Replace the module with the shared fake in `test/mocks/webtorrent.ts`:
+Unit tests never join a real swarm: it would open ports, depend on the
+network and be slow. Use the shared fake in `test/mocks/webtorrent.ts`.
+Prefer passing a `new FakeWebTorrent()` to the code under test (see
+[Server tests](#server-tests)). Where code creates the client itself,
+replace the module:
 
 ```ts
 import { afterEach, vi } from 'vitest';
@@ -54,5 +103,38 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
 If the app starts using more of the WebTorrent API, add it to the fake (and
 to `test/mocks/webtorrent.test.ts`) rather than mocking ad hoc in each test.
 
-Real playback, codecs and peer connectivity can only be checked in a real
-browser.
+The fake was written for a browser client and doesn't cover what the server
+will use yet: `file.createReadStream({ start, end })` for streaming, the
+client's `listening` event and `address()`, and the `path` option on `add()`.
+Add them as the steps that need them start. The fake is plain TypeScript on
+`node:events`, so it works in both the `server` and `client` test projects.
+
+## Manual testing
+
+Peer connectivity, playback and codecs can only be checked with the real
+client and a real browser. Until 4.5 adds a Playwright test, check them by
+hand:
+
+1. `npm run build && npm start`, then open `http://localhost:3000`. Use
+   `npm run dev` for quick UI work, but check playback against the built
+   app served by Express.
+2. Test both kinds of swarm the server should reach:
+   - an ordinary BitTorrent torrent (TCP/uTP peers, DHT), for example a
+     Linux distribution ISO or an open-licensed film
+   - a WebRTC-seeded torrent such as WebTorrent's demo, Sintel
+     (`https://webtorrent.io/torrents/sintel.torrent`)
+3. To test DHT alone, use a magnet link with no `tr=` trackers.
+4. Open a LAN URL printed at startup on another device (a phone, a TV
+   browser) and check it plays there too.
+5. Watch the server log for errors, the browser console, and for M4 steps
+   the `<video>` element's `waiting` and `stalled` events. Seek forward to
+   check the range requests.
+
+Real peer tests use your network and upload to the swarm (see
+[ARCHITECTURE.md](ARCHITECTURE.md#seeding)). Remove test torrents afterwards
+and clear the download directory.
+
+Only use content you have the right to share: open-licensed films such as
+Sintel or Big Buck Bunny, or files you made yourself.
+
+Record what you checked by hand in the pull request description.

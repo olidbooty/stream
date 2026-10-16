@@ -141,7 +141,8 @@ design stays next to the code.
 | # | Decision | Status | Outcome |
 | - | -------- | ------ | ------- |
 | 1 | Browser-side WebTorrent vs. a Node-side client streaming over HTTP | Decided | Node-side, so TCP, uTP and DHT peers are reachable as well as WebRTC. See [Why not in the browser](#why-not-in-the-browser) |
-| 2 | Whether explicit sequential piece selection is needed | Open | `createReadStream` already prioritises the requested range; verify while seeking in 3.2 |
+| 2 | Whether explicit sequential piece selection is needed | Open | `createReadStream` already prioritises the requested range; verify while seeking in 3.3 |
 | 3 | Whether to list `.mkv` and similar with a warning | Open | |
-| 4 | Chunk store / storage strategy | Open | Now a disk question: download directory, size limit and cleanup |
+| 4 | Chunk store / storage strategy | Open | Now a disk question: download directory (2.1), size limit and cleanup (4.3) |
 | 5 | Run the codec audit (4.1) early on test files | Open | |
+| 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |

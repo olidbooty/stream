@@ -75,9 +75,9 @@ depends on it moves earlier or later to match.
 | --------- | ----- | ------ |
 | M1 - Setup: project skeleton | 1.1–1.3 | npm workspace, Express and WebTorrent, static file server |
 | M2 - Setup: frontend, network & testing | 1.4–1.10 | Vite, LAN access, Vitest, smoke tests, WebTorrent mock, TypeScript migration |
-| M3 - WebTorrent in the browser | 2.1–2.5 | Browser client, magnet/.torrent input, metadata, swarm states, peer discovery |
-| M4 - Playback | 3.1–3.5 | Picking the media file, sequential download, streaming into a `<video>`, buffer health |
-| M5 - Codecs & storage hardening | 4.1–4.5 | Codec audit, unsupported-format errors, browser storage limits, optional FFmpeg.wasm and Playwright e2e |
+| M3 - WebTorrent on the server | 2.1–2.6 | Node WebTorrent client, torrent API, metadata, live swarm state, frontend, peer connectivity |
+| M4 - Playback | 3.1–3.5 | Picking the media file, HTTP range streaming, piece prioritisation, `<video>` playback, buffer health |
+| M5 - Codecs & storage hardening | 4.1–4.5 | Codec audit, unsupported-format errors, disk limits and cleanup, optional native ffmpeg and Playwright e2e |
 
 The Dashboard shows live progress for each milestone.
 
@@ -123,7 +123,7 @@ settled before. Don't start that step while its decision is `Open`.
 To record a decision:
 
 1. Fill in Decision / Outcome with what was chosen and the main reason, and
-   set Status to `Decided`. Use `Dropped` if the question no longer applies.
+   set Status to `Decided`. Use `Not Needed` if the question no longer applies.
 2. Summarise it in [ARCHITECTURE.md](ARCHITECTURE.md#decisions) if it
    shapes the code, so the reasoning sits next to it in the repo.
 3. If it changes the plan, update the affected Tracker rows (steps, estimates,

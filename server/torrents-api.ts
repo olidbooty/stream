@@ -4,6 +4,7 @@ import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
 import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { isMagnetURI } from './magnet.js';
+import { selectMedia, type FileMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
 import { TorrentWatch, torrentState, type TorrentState } from './torrent-state.js';
 
@@ -41,7 +42,8 @@ export interface TorrentSummary {
   errorMessage: string | null;
 }
 
-export interface TorrentFileInfo {
+// media and sample come from selectMedia() (server/media.ts).
+export interface TorrentFileInfo extends FileMedia {
   // Position in the torrent; stable, so later steps can address files by it.
   index: number;
   name: string;
@@ -50,9 +52,14 @@ export interface TorrentFileInfo {
   length: number;
 }
 
-// One torrent with its files; files is null while the metadata is pending.
+// One torrent with its files. files, mainFile and videos are null while the
+// metadata is pending; mainFile is also null when there is no video.
 export interface TorrentDetail extends TorrentSummary {
   files: TorrentFileInfo[] | null;
+  // Index of the file to play by default.
+  mainFile: number | null;
+  // Indexes of every video file, in the order to list them.
+  videos: number[] | null;
 }
 
 // `metadata` is set as soon as the info dictionary arrives. `ready` comes
@@ -88,17 +95,18 @@ function summarize(torrent: Torrent, watch: TorrentWatch, parsed?: ParsedTorrent
 }
 
 function describe(torrent: Torrent, watch: TorrentWatch): TorrentDetail {
-  return {
-    ...summarize(torrent, watch),
-    files: hasMetadata(torrent)
-      ? torrent.files.map((file, index) => ({
-          index,
-          name: file.name,
-          path: file.path,
-          length: file.length,
-        }))
-      : null,
-  };
+  if (!hasMetadata(torrent)) {
+    return { ...summarize(torrent, watch), files: null, mainFile: null, videos: null };
+  }
+  const { files, mainFile, videos } = selectMedia(
+    torrent.files.map((file, index) => ({
+      index,
+      name: file.name,
+      path: file.path,
+      length: file.length,
+    })),
+  );
+  return { ...summarize(torrent, watch), files, mainFile, videos };
 }
 
 function sendError(res: Response, status: number, error: string, extra: object = {}): void {
@@ -208,7 +216,9 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
   router.get('/:infoHash', (req, res) => {
     const found = torrentFromParams(req, res);
     if (found?.torrent) res.json(describe(found.torrent, watch));
-    else if (found?.failed) res.json({ ...found.failed, files: null } satisfies TorrentDetail);
+    else if (found?.failed) {
+      res.json({ ...found.failed, files: null, mainFile: null, videos: null } satisfies TorrentDetail);
+    }
   });
 
   router.delete('/:infoHash', async (req, res) => {

@@ -75,6 +75,46 @@ later steps (3.1, 3.2) can address a file by it. File `path`s are relative to
 `DOWNLOAD_DIR`; `parse-torrent` normalises them, so `..` and absolute paths
 in a hostile `.torrent` can't place files outside it (Decision #16).
 
+### Choosing the media file
+
+Once the file list is known, `selectMedia()` in `server/media.ts` classifies
+each file and picks the one to play. It is a pure function of the file list
+(`index`, `name`, `path`, `length`), so it is unit-tested on its own.
+
+- **Classification is by extension only**, ignoring case. `.mp4`, `.m4v` and
+  `.webm` are `video`: every current browser plays them with common codecs.
+  `.mkv`, `.avi`, `.mov`, `.ogv` and other video containers are
+  `video-may-not-play` and still listed (Decision #3): Chrome often plays
+  `.mkv` with H.264 or VP9, and 4.2 will show the real error when it doesn't.
+  `.ogv` is in this group because Safari has never played Ogg and Chrome has
+  deprecated Theora. `.srt` and `.vtt` are flagged as `subtitle` for 3.4.
+  The full list is in the [README](README.md#api).
+- **No codec checks yet.** The 4.1 audit (Decision #5) was meant to inform
+  this filter but hasn't run: it needs `ffprobe` and real files. So an
+  `.mp4` holding HEVC or AC-3 audio is still reported as `video`. Codec-level
+  checks come with 4.1 and 4.2 (Decision #17).
+- **Samples.** A video with the word `sample` or `samples` in its path that
+  is under a quarter of the size of the largest video is a `sample`. The
+  size check keeps a film called "The Sample" from being skipped, and a
+  torrent whose only video is a sample still plays it.
+- **Main-sized videos** are those at least a third of the size of the
+  largest video: both parts of a CD1/CD2 film, every episode of a season
+  (even next to a double-length finale), or two encodes of the same film.
+  Trailers and most extras are smaller.
+- **`mainFile`** is the first main-sized video in path order that should
+  play, or else the first one that may not. So a film's `.mp4` encode wins
+  over its larger `.mkv`, a season starts at episode 1, and a short `.mp4`
+  trailer never beats a full-length `.mkv`.
+- **`videos`** lists every video: main-sized ones, then smaller ones, then
+  samples, each group in path order. Paths compare numerically
+  (`Episode 2` before `Episode 10`) with a fixed locale.
+
+These heuristics haven't been tried on real torrents yet (Decision #19).
+
+The choice doesn't change what is downloaded: WebTorrent still fetches every
+file in the torrent, including samples, extras and other encodes
+(Decision #18).
+
 ### State and events
 
 Every torrent summary carries a `state`, worked out by `torrentState()` in
@@ -301,6 +341,10 @@ design stays next to the code.
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |
+| 17 | Media classification is by extension only | Open | The 4.1 codec audit (Decision #5) hasn't run, so 3.1 can't use it. An `.mp4` with HEVC or AC-3 is reported as `video`; an `.mkv` with H.264 is labelled "may not play". Revisit in 4.1/4.2 |
+| 18 | Whole torrent is downloaded, not just the chosen file | Open | Picking `mainFile` doesn't deselect samples, extras or other encodes, so they still use disk and bandwidth. Decide in 3.2/3.3 or 4.3 whether to deselect files that aren't being watched |
+| 19 | Main-file heuristics are unproven | Decided | Accepted for now: a sample is under 25% of the largest video, main-sized is at least a third. `.ts` (MPEG-TS) also matches TypeScript sources, and video inside `.rar`/`.zip` isn't found. Revisit after the manual tests with real torrents. See [Choosing the media file](#choosing-the-media-file) |
+| 20 | Subtitles need work before playback | Open | `.srt` can't be used in `<track>` without converting to WebVTT, subtitles aren't matched to a video or language, and `.ass`/`.ssa` and embedded MKV subtitles aren't detected. Decide in 3.4 |
 | 21 | Event stream connections per browser | Open | Each open stream holds an HTTP/1.1 connection and browsers allow about 6 per origin, so several UI tabs could starve video `Range` requests. No limit on streams server-side either. Decide in 2.5/3.4 (one stream per page, or HTTP/2) |
 | 22 | Failed torrents | Decided | Kept in memory with `state: 'error'` until deleted or re-added, at most 50, lost on restart like #13. WebTorrent has already deleted their files, so a retry starts from zero. See [State and events](#state-and-events) |
 | 23 | `seeding` needs every file | Open | `torrent.done` is only true when every file is downloaded, so deselecting files (#18) would leave a torrent short of `seeding` with progress under 1. Decide together with #18 |

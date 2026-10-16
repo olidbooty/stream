@@ -63,7 +63,7 @@ curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/x-bittorr
 ```
 
 Torrents live in memory: after a restart the list is empty, but their files
-stay in `DOWNLOAD_DIR` (see Risks & Decisions #13).
+stay in `DOWNLOAD_DIR`. Restoring them at startup comes in 4.3 (Decision #13).
 
 ## Layout
 

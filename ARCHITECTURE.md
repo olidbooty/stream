@@ -129,8 +129,8 @@ const client = new WebTorrent({ torrentPort, dhtPort, tracker: { wrtc } });
 - The peer port binds to `0.0.0.0` whatever `HOST` says. `HOST` only
   restricts the HTTP port (Risks & Decisions #8).
 - **UPnP and NAT-PMP are on by default**: once listening, the client asks the
-  router to forward the peer port, without any setting from us. Whether to
-  keep that is open until 2.6 (Risks & Decisions #7).
+  router to forward the peer port, without any setting from us. 2.6 turns them
+  off unless `PORT_MAPPING=1` (Decision #7).
 - A peer port that is already in use makes the constructor emit `error`;
   `server/index.ts` logs it and exits with status 1.
 - A torrent's own errors (a bad store, invalid metadata) are re-emitted on
@@ -161,6 +161,9 @@ but moves it:
   `destroyStoreOnDestroy: true` and `removeTorrent()` passes
   `destroyStore: true`.
 - A limit on the directory's total size comes in 4.3.
+- The torrent list is in memory, so a restart forgets it. 4.3 saves each
+  torrent to `DOWNLOAD_DIR/.torrents` and re-adds them at startup
+  (Decision #13).
 
 ### Streaming
 
@@ -202,8 +205,10 @@ on the router by itself (Decisions #7 and #8).
 the server contact hosts its adder chose: trackers (`tr=`, `announce`), web
 seeds (`ws=`, `url-list`) and a magnet's `xs=` URL, which WebTorrent fetches
 over HTTP to get metadata. Someone on the LAN could use that to make the
-server send requests to other hosts, including ones on the LAN
-(Decision #11).
+server send requests to other hosts, including ones on the LAN.
+Decision #11: 2.6 strips `xs=` and drops tracker and web seed URLs on
+`localhost` or a literal private IP. A hostname that resolves to a LAN address
+still gets through.
 
 ## Decisions
 
@@ -220,11 +225,11 @@ design stays next to the code.
 | 4 | Chunk store / storage strategy | Decided | Default `fs-chunk-store` in `DOWNLOAD_DIR` (default `./downloads`). Removing a torrent deletes its files; 4.3 adds a size limit. See [Storage](#storage) |
 | 5 | Run the codec audit (4.1) early on test files | Decided | Yes. 4.1 now depends on 2.3 instead of 3.1, so test files are checked with `ffprobe` before playback work and 3.1's filter can use the results |
 | 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |
-| 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Open | On by default since 2.1: the router is asked to forward the peer port. Decide in 2.6 |
+| 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Decided | Off by default, so the router is never changed silently. 2.6 passes `natUpnp: false` and `natPmp: false`; `PORT_MAPPING=1` turns both on. Users forward `TORRENT_PORT` by hand |
 | 8 | Peer port listens on all interfaces | Decided | Accepted. Peers must reach it, so `HOST` only limits the HTTP port. See [Network exposure](#network-exposure) |
 | 9 | 2.1 not yet checked against a real swarm | Open | Startup, `/api/client` and shutdown were checked; joining TCP/uTP, DHT and WebRTC swarms needs a manual check before 2.6 |
-| 10 | Native modules without prebuilt binaries | Open | `utp-native` has no Linux ARM build (falls back to TCP); `node-datachannel` downloads its binary at install or builds with CMake. Matters for a Raspberry Pi host |
-| 11 | Torrents make the server contact hosts the adder chose | Open | Trackers, web seeds and magnet `xs=` URLs come from the torrent. Decide before 2.5 whether to strip `xs=`/web seeds or limit them to public addresses. See [Network exposure](#network-exposure) |
+| 10 | Native modules without prebuilt binaries | Decided | Support Linux x64, macOS, Windows and Raspberry Pi. 2.6 adds a startup check: without `utp-native` the client logs that it is TCP-only; if `node-datachannel` fails to load it runs without WebRTC instead of crashing. The README lists the ARM build tools (build-essential, cmake) |
+| 11 | Torrents make the server contact hosts the adder chose | Decided | 2.6, before 2.5: strip the magnet `xs=` URL, and drop tracker and web seed URLs with another scheme or on `localhost` or a literal loopback, private, link-local or unspecified IP. Hostnames that resolve to the LAN still pass, accepted as with #12. See [Network exposure](#network-exposure) |
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
-| 13 | Torrent list is in memory only | Open | A restart forgets all torrents, but their files stay in `DOWNLOAD_DIR` and are never deleted. Decide before 4.3 whether to restore torrents on startup or clean up orphaned files |
+| 13 | Torrent list is in memory only | Decided | 4.3 restores them: each torrent is saved to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` and re-added at startup, where WebTorrent re-verifies the files already on disk. Files no saved torrent owns are deleted |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |

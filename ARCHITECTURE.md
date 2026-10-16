@@ -53,6 +53,25 @@ Not supported: v2-only (`urn:btmh:`) magnets, which `parse-torrent` can't give
 an info hash for, and `.torrent` URLs, which would make the server fetch
 arbitrary URLs.
 
+### Metadata
+
+`GET /api/torrents/:infoHash` reports a torrent's files once WebTorrent has
+its metadata (the info dictionary): straight away for a `.torrent` upload,
+and from peers for a magnet link. Until then it answers `200` with
+`hasMetadata: false` and `files`/`length` set to `null`, a normal state
+rather than an error.
+
+`hasMetadata` checks `torrent.metadata`, which is set when the metadata
+arrives. `torrent.ready` comes later: WebTorrent first verifies any data
+already on disk, which for a large, partly downloaded torrent can take a
+while. Both are reported; the file list doesn't wait for `ready`.
+
+A magnet link whose swarm has no peers stays pending indefinitely; nothing
+times out (Decision #15). File `index` is the torrent's own file order, so
+later steps (3.1, 3.2) can address a file by it. File `path`s are relative to
+`DOWNLOAD_DIR`; `parse-torrent` normalises them, so `..` and absolute paths
+in a hostile `.torrent` can't place files outside it (Decision #16).
+
 ## Target design
 
 The torrent client runs **in the Node server**, not in the browser
@@ -228,3 +247,5 @@ design stays next to the code.
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
 | 13 | Torrent list is in memory only | Open | A restart forgets all torrents, but their files stay in `DOWNLOAD_DIR` and are never deleted. Decide before 4.3 whether to restore torrents on startup or clean up orphaned files |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
+| 15 | Magnet metadata can stay pending forever | Open | With no peers, a magnet link never gets metadata and nothing times out or tells the user. Decide in 2.4, which can report WebTorrent's `noPeers` event, whether to show it and when to give up |
+| 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |

@@ -1,6 +1,8 @@
 # stream
 
-Stream video from torrents in the browser using WebTorrent.
+Stream video from torrents to any browser on your network. A WebTorrent client
+in the Node server joins BitTorrent (TCP, uTP, DHT) and WebRTC swarms and
+streams files to the page over HTTP.
 
 ## Requirements
 

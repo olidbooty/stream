@@ -103,7 +103,7 @@ The Dashboard shows live progress for each milestone.
    - what the step delivers, and anything from its row it doesn't
    - decisions made, with the Risks & Decisions number
    - how it was tested: the automated tests added, plus anything checked by
-     hand in a browser (see [TESTING.md](TESTING.md#manual-testing-in-a-browser))
+     hand in a browser (see [TESTING.md](TESTING.md#manual-testing))
    - follow-ups for later steps
 
    If the step changes how things are set up, run, tested or structured,
@@ -124,7 +124,7 @@ To record a decision:
 
 1. Fill in Decision / Outcome with what was chosen and the main reason, and
    set Status to `Decided`. Use `Dropped` if the question no longer applies.
-2. Summarise it in [ARCHITECTURE.md](ARCHITECTURE.md#open-decisions) if it
+2. Summarise it in [ARCHITECTURE.md](ARCHITECTURE.md#decisions) if it
    shapes the code, so the reasoning sits next to it in the repo.
 3. If it changes the plan, update the affected Tracker rows (steps, estimates,
    dependencies or notes) as described in [Changing the plan](#changing-the-plan).

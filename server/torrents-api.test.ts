@@ -1,9 +1,13 @@
 import express, { type Express } from 'express';
+import type { AddressInfo } from 'node:net';
 import parseTorrent, { toTorrentFile, type Instance as ParsedTorrent } from 'parse-torrent';
+import { once } from 'node:events';
+import type { Server } from 'node:http';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
 import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
+import { EventStream } from './event-stream.js';
 import { MAX_TORRENT_FILE_BYTES, torrentsRouter, type TorrentFileInfo } from './torrents-api.js';
 
 const HASH = '0123456789abcdef0123456789abcdef01234567';
@@ -189,8 +193,87 @@ describe('/api/torrents', () => {
           numPeers: 3,
           downloadSpeed: 500,
           uploadSpeed: 0,
+          state: 'downloading',
+          errorMessage: null,
         },
       ]);
+    });
+  });
+
+  describe('state', () => {
+    const stateOf = async () => (await request(app).get(`/api/torrents/${HASH}`)).body.state;
+
+    beforeEach(async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+    });
+
+    it('goes from connecting to downloading to seeding', async () => {
+      const torrent = client.torrents[0];
+      expect(await stateOf()).toBe('connecting');
+
+      torrent.simulateWire();
+      expect(await stateOf()).toBe('connecting');
+
+      torrent.simulateMetadata({ name: 'Sintel', files: [{ name: 'sintel.mp4', length: 1000 }] });
+      expect(await stateOf()).toBe('downloading');
+
+      torrent.simulateDone();
+      expect(await stateOf()).toBe('seeding');
+    });
+
+    it('reports noPeers once WebTorrent finds none, until a peer connects', async () => {
+      const torrent = client.torrents[0];
+
+      torrent.simulateNoPeers('dht');
+      expect(await stateOf()).toBe('noPeers');
+      const list = await request(app).get('/api/torrents');
+      expect(list.body[0].state).toBe('noPeers');
+
+      torrent.simulateWire();
+      expect(await stateOf()).toBe('connecting');
+    });
+  });
+
+  describe('a torrent that fails', () => {
+    beforeEach(async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      client.torrents[0].simulateError(new Error('disk full'));
+    });
+
+    it('stays listed with its error after WebTorrent drops it', async () => {
+      expect(client.torrents).toEqual([]);
+
+      const list = await request(app).get('/api/torrents');
+      const one = await request(app).get(`/api/torrents/${HASH}`);
+
+      expect(list.body).toEqual([
+        expect.objectContaining({ infoHash: HASH, state: 'error', errorMessage: 'disk full' }),
+      ]);
+      expect(one.status).toBe(200);
+      expect(one.body).toMatchObject({
+        infoHash: HASH,
+        state: 'error',
+        files: null,
+        mainFile: null,
+        videos: null,
+      });
+    });
+
+    it('can be deleted', async () => {
+      const res = await request(app).delete(`/api/torrents/${HASH}`);
+
+      expect(res.status).toBe(204);
+      expect((await request(app).get('/api/torrents')).body).toEqual([]);
+      expect((await request(app).delete(`/api/torrents/${HASH}`)).status).toBe(404);
+    });
+
+    it('can be added again, which replaces the error', async () => {
+      const res = await request(app).post('/api/torrents').send({ magnet: MAGNET });
+
+      expect(res.status).toBe(201);
+      const list = await request(app).get('/api/torrents');
+      expect(list.body).toEqual([expect.objectContaining({ infoHash: HASH, state: 'connecting' })]);
     });
   });
 
@@ -361,6 +444,92 @@ describe('/api/torrents', () => {
       const res = await request(app).get('/api/torrents/not-a-hash');
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /events', () => {
+    let server: Server;
+    let baseUrl: string;
+    let controller: AbortController;
+
+    // Reads one server-sent event, skipping keep-alive comments.
+    async function readEvent(
+      reader: ReadableStreamDefaultReader<Uint8Array>,
+      buffer: { text: string },
+    ): Promise<{ event: string; data: unknown }> {
+      const decoder = new TextDecoder();
+      for (;;) {
+        const end = buffer.text.indexOf('\n\n');
+        if (end !== -1) {
+          const block = buffer.text.slice(0, end);
+          buffer.text = buffer.text.slice(end + 2);
+          if (block.startsWith(':')) continue;
+          const field = (name: string) =>
+            block
+              .split('\n')
+              .find((line) => line.startsWith(`${name}: `))
+              ?.slice(name.length + 2) ?? '';
+          return { event: field('event'), data: JSON.parse(field('data')) };
+        }
+        const { value, done } = await reader.read();
+        if (done) throw new Error('stream ended');
+        buffer.text += decoder.decode(value, { stream: true });
+      }
+    }
+
+    beforeEach(async () => {
+      server = app.listen(0, '127.0.0.1');
+      await once(server, 'listening');
+      baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      controller = new AbortController();
+    });
+
+    afterEach(async () => {
+      controller.abort();
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    });
+
+    it('streams the torrent list now and again when it changes', async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+
+      const res = await fetch(`${baseUrl}/api/torrents/events`, { signal: controller.signal });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
+      expect(res.headers.get('cache-control')).toBe('no-cache, no-transform');
+      const reader = res.body!.getReader();
+      const buffer = { text: '' };
+
+      const first = await readEvent(reader, buffer);
+      expect(first.event).toBe('torrents');
+      expect(first.data).toEqual([expect.objectContaining({ infoHash: HASH, state: 'connecting' })]);
+
+      client.torrents[0].simulateNoPeers();
+      const second = await readEvent(reader, buffer);
+      expect(second.data).toEqual([expect.objectContaining({ infoHash: HASH, state: 'noPeers' })]);
+    });
+
+    it('lets the server close while a stream is open', async () => {
+      const res = await fetch(`${baseUrl}/api/torrents/events`, { signal: controller.signal });
+      await readEvent(res.body!.getReader(), { text: '' });
+
+      // What server/index.ts does on SIGINT.
+      const closed = new Promise((resolve) => server.close(resolve));
+      server.closeAllConnections();
+
+      await expect(closed).resolves.toBeUndefined();
+    });
+
+    it('unsubscribes when the client goes away', async () => {
+      const subscribe = vi.spyOn(EventStream.prototype, 'subscribe');
+      const res = await fetch(`${baseUrl}/api/torrents/events`, { signal: controller.signal });
+      await readEvent(res.body!.getReader(), { text: '' });
+      const stream = subscribe.mock.contexts[0] as EventStream;
+      expect(stream.size).toBe(1);
+
+      controller.abort();
+
+      await vi.waitFor(() => expect(stream.size).toBe(0));
     });
   });
 

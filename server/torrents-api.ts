@@ -2,9 +2,11 @@ import express, { Router, type ErrorRequestHandler, type Request, type Response 
 import parseTorrent, { toMagnetURI, type Instance as ParsedTorrent } from 'parse-torrent';
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
+import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { isMagnetURI } from './magnet.js';
 import { selectMedia, type FileMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
+import { TorrentWatch, torrentState, type TorrentState } from './torrent-state.js';
 
 // A .torrent file holds 20 bytes per piece, so even a 100 GB torrent with
 // 256 KiB pieces needs about 8 MB. Most are well under 1 MB.
@@ -17,7 +19,7 @@ export interface TorrentsRouterOptions {
   downloadDir: string;
 }
 
-// What the list shows per torrent. Live progress is pushed in 2.4.
+// What the list and the event stream show per torrent.
 export interface TorrentSummary {
   infoHash: string;
   name: string | null;
@@ -33,6 +35,11 @@ export interface TorrentSummary {
   numPeers: number;
   downloadSpeed: number;
   uploadSpeed: number;
+  // See torrentState(). An `error` torrent is no longer in the client; it is
+  // listed until it is deleted or added again.
+  state: TorrentState;
+  // Why it failed; null unless state is `error`.
+  errorMessage: string | null;
 }
 
 // media and sample come from selectMedia() (server/media.ts).
@@ -64,7 +71,7 @@ function hasMetadata(torrent: Torrent): boolean {
 
 // Right after add() the real client hasn't parsed the torrent yet, so the
 // caller passes the parsed torrent it already has.
-function summarize(torrent: Torrent, parsed?: ParsedTorrent): TorrentSummary {
+function summarize(torrent: Torrent, watch: TorrentWatch, parsed?: ParsedTorrent): TorrentSummary {
   return {
     infoHash: torrent.infoHash || (parsed?.infoHash ?? ''),
     name: torrent.name || parsed?.name || null,
@@ -76,12 +83,20 @@ function summarize(torrent: Torrent, parsed?: ParsedTorrent): TorrentSummary {
     numPeers: torrent.numPeers,
     downloadSpeed: torrent.downloadSpeed,
     uploadSpeed: torrent.uploadSpeed,
+    state: torrentState({
+      failed: false,
+      done: torrent.done,
+      hasMetadata: hasMetadata(torrent),
+      numPeers: torrent.numPeers,
+      noPeersReported: watch.noPeersReported(torrent),
+    }),
+    errorMessage: null,
   };
 }
 
-function describe(torrent: Torrent): TorrentDetail {
+function describe(torrent: Torrent, watch: TorrentWatch): TorrentDetail {
   if (!hasMetadata(torrent)) {
-    return { ...summarize(torrent), files: null, mainFile: null, videos: null };
+    return { ...summarize(torrent, watch), files: null, mainFile: null, videos: null };
   }
   const { files, mainFile, videos } = selectMedia(
     torrent.files.map((file, index) => ({
@@ -91,7 +106,7 @@ function describe(torrent: Torrent): TorrentDetail {
       length: file.length,
     })),
   );
-  return { ...summarize(torrent), files, mainFile, videos };
+  return { ...summarize(torrent, watch), files, mainFile, videos };
 }
 
 function sendError(res: Response, status: number, error: string, extra: object = {}): void {
@@ -100,24 +115,48 @@ function sendError(res: Response, status: number, error: string, extra: object =
 
 export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): Router {
   const router = Router();
+  const watch = new TorrentWatch(client);
 
   const findTorrent = (infoHash: string): Torrent | undefined =>
     client.torrents.find((torrent) => torrent.infoHash === infoHash);
 
-  // Resolves :infoHash, or sends the 400/404 and returns undefined.
-  const torrentFromParams = (req: Request, res: Response): Torrent | undefined => {
+  // Resolves :infoHash to a running torrent or a failed one, or sends the
+  // 400/404 and returns undefined.
+  const torrentFromParams = (
+    req: Request,
+    res: Response,
+  ): { torrent?: Torrent; failed?: TorrentSummary } | undefined => {
     const infoHash = String(req.params.infoHash);
     if (!INFO_HASH.test(infoHash)) {
       sendError(res, 400, 'infoHash must be 40 hex characters');
       return undefined;
     }
     const torrent = findTorrent(infoHash.toLowerCase());
-    if (!torrent) sendError(res, 404, 'No torrent with that info hash');
-    return torrent;
+    if (torrent) return { torrent };
+    const failed = watch.getFailed(infoHash.toLowerCase());
+    if (failed) return { failed };
+    sendError(res, 404, 'No torrent with that info hash');
+    return undefined;
   };
 
+  const list = (): TorrentSummary[] => [
+    ...client.torrents.map((torrent) => summarize(torrent, watch)),
+    ...watch.failed(),
+  ];
+
+  const events = new EventStream('torrents', list);
+
   router.get('/', (req, res) => {
-    res.json(client.torrents.map((torrent) => summarize(torrent)));
+    res.json(list());
+  });
+
+  // Server-sent events: the same list as GET /, sent at once and then
+  // whenever it changes, checked once a second. Registered before /:infoHash,
+  // which would answer 400 for "events".
+  router.get('/events', (req, res) => {
+    res.writeHead(200, SSE_HEADERS);
+    res.flushHeaders();
+    events.subscribe(res);
   });
 
   // Takes JSON { "magnet": "magnet:?..." } or a .torrent file sent as the raw
@@ -157,30 +196,36 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
       const existing = findTorrent(parsed.infoHash);
       if (existing) {
         return sendError(res, 409, 'This torrent has already been added', {
-          torrent: summarize(existing),
+          torrent: summarize(existing, watch),
         });
       }
 
       // Hand over the parsed torrent so WebTorrent never re-reads the input.
       const torrent = addTorrent(client, parsed, downloadDir);
+      watch.watch(torrent, parsed.infoHash, () => summarize(torrent, watch, parsed));
       res
         .status(201)
         .location(`${req.baseUrl}/${parsed.infoHash}`)
-        .json(summarize(torrent, parsed));
+        .json(summarize(torrent, watch, parsed));
     },
   );
 
   // 200 either way: a torrent still fetching its metadata is a normal state,
-  // reported as hasMetadata: false with files and length null.
+  // reported as hasMetadata: false with files and length null. A failed
+  // torrent has no files any more, so they are null too.
   router.get('/:infoHash', (req, res) => {
-    const torrent = torrentFromParams(req, res);
-    if (torrent) res.json(describe(torrent));
+    const found = torrentFromParams(req, res);
+    if (found?.torrent) res.json(describe(found.torrent, watch));
+    else if (found?.failed) {
+      res.json({ ...found.failed, files: null, mainFile: null, videos: null } satisfies TorrentDetail);
+    }
   });
 
   router.delete('/:infoHash', async (req, res) => {
-    const torrent = torrentFromParams(req, res);
-    if (!torrent) return;
-    await removeTorrent(client, torrent.infoHash);
+    const found = torrentFromParams(req, res);
+    if (!found) return;
+    if (found.torrent) await removeTorrent(client, found.torrent.infoHash);
+    else if (found.failed) watch.forget(found.failed.infoHash);
     res.status(204).end();
   });
 

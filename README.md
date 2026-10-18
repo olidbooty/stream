@@ -123,19 +123,23 @@ server/media.ts           classifies a torrent's files and picks the one to play
 public/                   build output served by Express (gitignored)
 downloads/                default DOWNLOAD_DIR (gitignored)
 test/mocks/               shared test doubles, e.g. the WebTorrent fake
+biome.json                Biome lint and format config
 ```
 
 ## Scripts
 
-| Script               | What it does                       |
-| -------------------- | ---------------------------------- |
-| `npm start`          | Run the Express server (via tsx)   |
-| `npm run dev`        | Vite dev server                    |
-| `npm run build`      | Build the frontend into `public/`  |
-| `npm run typecheck`  | Type-check everything with `tsc`   |
-| `npm test`           | Run the test suite once            |
-| `npm run test:watch` | Run tests in watch mode            |
-| `npm run coverage`   | Run tests with coverage            |
+| Script               | What it does                         |
+| -------------------- | ------------------------------------ |
+| `npm start`          | Run the Express server (via tsx)     |
+| `npm run dev`        | Vite dev server                      |
+| `npm run build`      | Build the frontend into `public/`    |
+| `npm run typecheck`  | Type-check everything with `tsc`     |
+| `npm run lint`       | Lint and check formatting with Biome |
+| `npm run lint:fix`   | Apply Biome's safe fixes and format  |
+| `npm run format`     | Format only, without lint fixes      |
+| `npm test`           | Run the test suite once              |
+| `npm run test:watch` | Run tests in watch mode              |
+| `npm run coverage`   | Run tests with coverage              |
 
 The code is TypeScript. `tsconfig.json` only type-checks (`noEmit`): Vite and
 Vitest transpile it themselves and `tsx` runs the server, so there is no
@@ -144,9 +148,12 @@ to `app.ts`), as Node's ESM resolution expects.
 
 ## Code style
 
-There is no linter or formatter yet, so match the existing code: 2-space
-indent, single quotes, semicolons, trailing commas in multi-line literals,
-and `import type` for type-only imports (`verbatimModuleSyntax` enforces it).
+[Biome](https://biomejs.dev) lints and formats the code, configured in
+`biome.json`: 2-space indent, single quotes, semicolons, trailing commas,
+100-column lines, sorted imports and the recommended lint rules. Run
+`npm run lint` to check and `npm run lint:fix` to fix what it can. Use
+`import type` for type-only imports (`verbatimModuleSyntax` enforces it), and
+prefix unused parameters with `_`, such as Express's `req`.
 Comments explain why, not what.
 
 See [TESTING.md](TESTING.md) for test conventions.

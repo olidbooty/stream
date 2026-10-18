@@ -92,6 +92,7 @@ The Dashboard shows live progress for each milestone.
    Commits that don't belong to a step (docs, tooling) have no prefix.
 5. Before opening a pull request, make sure these pass:
    ```sh
+   npm run lint
    npm run typecheck
    npm test
    npm run build

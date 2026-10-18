@@ -113,9 +113,10 @@ each file and picks the one to play. It is a pure function of the file list
 
 These heuristics haven't been tried on real torrents yet (Decision #19).
 
-The choice doesn't change what is downloaded: WebTorrent still fetches every
-file in the torrent, including samples, extras and other encodes
-(Decision #18).
+For now the choice doesn't change what is downloaded: WebTorrent still
+fetches every file in the torrent, including samples, extras and other
+encodes. 3.3 will download only the chosen video and its subtitles, and work
+out progress and `seeding` over that selection (Decisions #18 and #23).
 
 ### State and events
 
@@ -242,8 +243,8 @@ const client = new WebTorrent({ torrentPort, dhtPort, tracker: { wrtc } });
 - The peer port binds to `0.0.0.0` whatever `HOST` says. `HOST` only
   restricts the HTTP port (Risks & Decisions #8).
 - **UPnP and NAT-PMP are on by default**: once listening, the client asks the
-  router to forward the peer port, without any setting from us. Whether to
-  keep that is open until 2.6 (Risks & Decisions #7).
+  router to forward the peer port, without any setting from us. Decision #7
+  turns them off unless `PORT_MAPPING=1` is set; 2.6 implements it.
 - A peer port that is already in use makes the constructor emit `error`;
   `server/index.ts` logs it and exits with status 1.
 - A torrent's own errors (a bad store, invalid metadata) are re-emitted on
@@ -357,21 +358,21 @@ design stays next to the code.
 | 4 | Chunk store / storage strategy | Decided | Default `fs-chunk-store` in `DOWNLOAD_DIR` (default `./downloads`). Removing a torrent deletes its files; 4.3 adds a size limit. See [Storage](#storage) |
 | 5 | Run the codec audit (4.1) early on test files | Decided | Yes. 4.1 now depends on 2.3 instead of 3.1, so test files are checked with `ffprobe` before playback work and 3.1's filter can use the results |
 | 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |
-| 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Open | On by default since 2.1: the router is asked to forward the peer port. Decide in 2.6 |
+| 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Decided | Off by default: the client gets `natUpnp: false` and `natPmp: false`, and `PORT_MAPPING=1` turns both on. No silent router changes; users forward `TORRENT_PORT` by hand, documented in the README. Implemented in 2.6 |
 | 8 | Peer port listens on all interfaces | Decided | Accepted. Peers must reach it, so `HOST` only limits the HTTP port. See [Network exposure](#network-exposure) |
 | 9 | 2.1 not yet checked against a real swarm | Open | Startup, `/api/client` and shutdown were checked; joining TCP/uTP, DHT and WebRTC swarms needs a manual check before 2.6 |
-| 10 | Native modules without prebuilt binaries | Open | `utp-native` has no Linux ARM build (falls back to TCP); `node-datachannel` downloads its binary at install or builds with CMake. Matters for a Raspberry Pi host |
-| 11 | Torrents make the server contact hosts the adder chose | Open | Trackers, web seeds and magnet `xs=` URLs come from the torrent. Decide before 2.5 whether to strip `xs=`/web seeds or limit them to public addresses. See [Network exposure](#network-exposure) |
+| 10 | Native modules without prebuilt binaries | Decided | Support Linux x64, macOS, Windows and Raspberry Pi. 2.6 adds a startup check: without `utp-native` the client logs that it is TCP-only; if `node-datachannel` fails to load it runs without WebRTC instead of crashing. The README lists the build tools needed on ARM |
+| 11 | Torrents make the server contact hosts the adder chose | Decided | Strip a magnet's `xs=` URL before `client.add()`. Drop tracker and web seed URLs that aren't http(s)/udp/wss or whose host is localhost or a literal loopback, private, link-local or unspecified IP. Hostnames that resolve to LAN addresses still pass. Implemented in 2.6, before 2.5. See [Network exposure](#network-exposure) |
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
-| 13 | Torrent list is in memory only | Open | A restart forgets all torrents, but their files stay in `DOWNLOAD_DIR` and are never deleted. Decide before 4.3 whether to restore torrents on startup or clean up orphaned files |
+| 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` (the magnet until metadata arrives), delete it on removal, re-add them all at startup, then delete files no saved torrent owns. Part of 4.3 |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |
-| 17 | Media classification is by extension only | Open | The 4.1 codec audit (Decision #5) hasn't run, so 3.1 can't use it. An `.mp4` with HEVC or AC-3 is reported as `video`; an `.mkv` with H.264 is labelled "may not play". Revisit in 4.1/4.2 |
-| 18 | Whole torrent is downloaded, not just the chosen file | Open | Picking `mainFile` doesn't deselect samples, extras or other encodes, so they still use disk and bandwidth. Decide in 3.2/3.3 or 4.3 whether to deselect files that aren't being watched |
+| 17 | Media classification is by extension only | Decided | The browser decides: in 4.2 the player reports the `<video>` error with the file name and container. If `ffprobe` is installed, the server also probes codecs through the stream URL (only the header pieces are fetched) so the UI can warn before playing; it stays optional. Extension-only classification remains the first guess |
+| 18 | Whole torrent is downloaded, not just the chosen file | Decided | Download the chosen video and its subtitles only: add torrents with `deselect: true`, then select `mainFile` and its subtitles; picking another video selects it too. Streaming still fetches any range played. Implemented in 3.3 |
 | 19 | Main-file heuristics are unproven | Decided | Accepted for now: a sample is under 25% of the largest video, main-sized is at least a third. `.ts` (MPEG-TS) also matches TypeScript sources, and video inside `.rar`/`.zip` isn't found. Revisit after the manual tests with real torrents. See [Choosing the media file](#choosing-the-media-file) |
-| 20 | Subtitles need work before playback | Open | `.srt` can't be used in `<track>` without converting to WebVTT, subtitles aren't matched to a video or language, and `.ass`/`.ssa` and embedded MKV subtitles aren't detected. Decide in 3.4 |
-| 21 | Event stream connections per browser | Open | Each open stream holds an HTTP/1.1 connection and browsers allow about 6 per origin, so several UI tabs could starve video `Range` requests. No limit on streams server-side either. Decide in 2.5/3.4 (one stream per page, or HTTP/2) |
+| 20 | Subtitles need work before playback | Decided | Serve `.vtt` as is and convert `.srt` to WebVTT on the server (UTF-8, falling back to Windows-1252). Match subtitles to a video by file name with an optional language code (`Sintel.en.srt` → `Sintel.mp4`, `en`). No `.ass`/`.ssa` or embedded MKV subtitles in M4. Implemented in 3.4 |
+| 21 | Event stream connections per browser | Decided | One stream per page, closed while the tab is hidden and reopened when it is shown, so background tabs hold no connection; the server caps open streams at 32 (`503` above). HTTP/2 is ruled out because browsers only use it over HTTPS. Implemented in 2.5 |
 | 22 | Failed torrents | Decided | Kept in memory with `state: 'error'` until deleted or re-added, at most 50, lost on restart like #13. WebTorrent has already deleted their files, so a retry starts from zero. See [State and events](#state-and-events) |
-| 23 | `seeding` needs every file | Open | `torrent.done` is only true when every file is downloaded, so deselecting files (#18) would leave a torrent short of `seeding` with progress under 1. Decide together with #18 |
+| 23 | `seeding` needs every file | Decided | Progress and state follow the selection (#18): progress is computed from the selected files and `seeding` means every selected file is done, instead of `torrent.done`/`torrent.progress`, which count every file. Implemented in 3.3 |
 | 24 | State timing | Decided | Accepted: a new torrent shows `connecting` for about 30 s before `noPeers` (WebTorrent's fixed check interval), and verifying existing data also shows as `connecting`; the UI can tell that apart with `hasMetadata && !ready` |

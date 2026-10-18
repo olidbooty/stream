@@ -2,13 +2,20 @@ import { once } from 'node:events';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express, { type Express } from 'express';
-import parseTorrent, { type Instance as ParsedTorrent, toTorrentFile } from 'parse-torrent';
+import parseTorrent, {
+  type Instance as ParsedTorrent,
+  toTorrentFile,
+} from 'parse-torrent';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
 import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import { EventStream } from './event-stream.js';
-import { MAX_TORRENT_FILE_BYTES, type TorrentFileInfo, torrentsRouter } from './torrents-api.js';
+import {
+  MAX_TORRENT_FILE_BYTES,
+  type TorrentFileInfo,
+  torrentsRouter,
+} from './torrents-api.js';
 
 const HASH = '0123456789abcdef0123456789abcdef01234567';
 const MAGNET = `magnet:?xt=urn:btih:${HASH}&dn=Sintel`;
@@ -16,7 +23,12 @@ const DOWNLOAD_DIR = '/srv/downloads';
 
 // A minimal single-file .torrent. Its info hash is the SHA-1 of the info dict.
 function torrentFile(name = 'bunny.mp4'): Buffer {
-  const info = { name, length: 1000, 'piece length': 16384, pieces: new Uint8Array(20) };
+  const info = {
+    name,
+    length: 1000,
+    'piece length': 16384,
+    pieces: new Uint8Array(20),
+  };
   return Buffer.from(toTorrentFile({ info } as unknown as ParsedTorrent));
 }
 
@@ -29,7 +41,10 @@ describe('/api/torrents', () => {
     app = express();
     app.use(
       '/api/torrents',
-      torrentsRouter({ client: client as unknown as WebTorrent, downloadDir: DOWNLOAD_DIR }),
+      torrentsRouter({
+        client: client as unknown as WebTorrent,
+        downloadDir: DOWNLOAD_DIR,
+      }),
     );
   });
 
@@ -40,11 +55,17 @@ describe('/api/torrents', () => {
 
   describe('POST with a magnet link', () => {
     it('adds the torrent to the download directory', async () => {
-      const res = await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      const res = await request(app)
+        .post('/api/torrents')
+        .send({ magnet: MAGNET });
 
       expect(res.status).toBe(201);
       expect(res.headers.location).toBe(`/api/torrents/${HASH}`);
-      expect(res.body).toMatchObject({ infoHash: HASH, ready: false, progress: 0 });
+      expect(res.body).toMatchObject({
+        infoHash: HASH,
+        ready: false,
+        progress: 0,
+      });
       expect(res.body.magnetURI).toContain(HASH);
       expect(client.torrents).toHaveLength(1);
       expect(client.torrents[0]).toMatchObject({
@@ -57,7 +78,9 @@ describe('/api/torrents', () => {
     it('accepts an upper-case or base32 info hash', async () => {
       const res = await request(app)
         .post('/api/torrents')
-        .send({ magnet: `magnet:?xt=urn:btih:${'AERUKZ4JVPGW66CKAERUKZ4JVPGW66CK'}` });
+        .send({
+          magnet: `magnet:?xt=urn:btih:${'AERUKZ4JVPGW66CKAERUKZ4JVPGW66CK'}`,
+        });
 
       expect(res.status).toBe(201);
       expect(res.body.infoHash).toMatch(/^[0-9a-f]{40}$/);
@@ -160,7 +183,10 @@ describe('/api/torrents', () => {
   });
 
   it('rejects other content types', async () => {
-    const res = await request(app).post('/api/torrents').type('text/plain').send(MAGNET);
+    const res = await request(app)
+      .post('/api/torrents')
+      .type('text/plain')
+      .send(MAGNET);
 
     expect(res.status).toBe(415);
   });
@@ -176,7 +202,10 @@ describe('/api/torrents', () => {
     it('lists added torrents with their state', async () => {
       await request(app).post('/api/torrents').send({ magnet: MAGNET });
       const torrent = client.torrents[0];
-      torrent.simulateMetadata({ name: 'Sintel', files: [{ name: 'sintel.mp4', length: 1000 }] });
+      torrent.simulateMetadata({
+        name: 'Sintel',
+        files: [{ name: 'sintel.mp4', length: 1000 }],
+      });
       torrent.simulateDownload(250, { downloadSpeed: 500, numPeers: 3 });
 
       const res = await request(app).get('/api/torrents');
@@ -201,7 +230,8 @@ describe('/api/torrents', () => {
   });
 
   describe('state', () => {
-    const stateOf = async () => (await request(app).get(`/api/torrents/${HASH}`)).body.state;
+    const stateOf = async () =>
+      (await request(app).get(`/api/torrents/${HASH}`)).body.state;
 
     beforeEach(async () => {
       await request(app).post('/api/torrents').send({ magnet: MAGNET });
@@ -214,7 +244,10 @@ describe('/api/torrents', () => {
       torrent.simulateWire();
       expect(await stateOf()).toBe('connecting');
 
-      torrent.simulateMetadata({ name: 'Sintel', files: [{ name: 'sintel.mp4', length: 1000 }] });
+      torrent.simulateMetadata({
+        name: 'Sintel',
+        files: [{ name: 'sintel.mp4', length: 1000 }],
+      });
       expect(await stateOf()).toBe('downloading');
 
       torrent.simulateDone();
@@ -248,7 +281,11 @@ describe('/api/torrents', () => {
       const one = await request(app).get(`/api/torrents/${HASH}`);
 
       expect(list.body).toEqual([
-        expect.objectContaining({ infoHash: HASH, state: 'error', errorMessage: 'disk full' }),
+        expect.objectContaining({
+          infoHash: HASH,
+          state: 'error',
+          errorMessage: 'disk full',
+        }),
       ]);
       expect(one.status).toBe(200);
       expect(one.body).toMatchObject({
@@ -265,15 +302,21 @@ describe('/api/torrents', () => {
 
       expect(res.status).toBe(204);
       expect((await request(app).get('/api/torrents')).body).toEqual([]);
-      expect((await request(app).delete(`/api/torrents/${HASH}`)).status).toBe(404);
+      expect((await request(app).delete(`/api/torrents/${HASH}`)).status).toBe(
+        404,
+      );
     });
 
     it('can be added again, which replaces the error', async () => {
-      const res = await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      const res = await request(app)
+        .post('/api/torrents')
+        .send({ magnet: MAGNET });
 
       expect(res.status).toBe(201);
       const list = await request(app).get('/api/torrents');
-      expect(list.body).toEqual([expect.objectContaining({ infoHash: HASH, state: 'connecting' })]);
+      expect(list.body).toEqual([
+        expect.objectContaining({ infoHash: HASH, state: 'connecting' }),
+      ]);
     });
   });
 
@@ -304,7 +347,10 @@ describe('/api/torrents', () => {
     });
 
     it('lists files and sizes once the metadata arrives', async () => {
-      client.torrents[0].simulateMetadata({ name: 'Sintel', files: SINTEL_FILES });
+      client.torrents[0].simulateMetadata({
+        name: 'Sintel',
+        files: SINTEL_FILES,
+      });
 
       const res = await request(app).get(`/api/torrents/${HASH.toUpperCase()}`);
 
@@ -374,7 +420,11 @@ describe('/api/torrents', () => {
         files: [
           { name: 'Film.1080p.MKV', path: 'Film/Film.1080p.MKV', length: 2000 },
           { name: 'Film.en.srt', path: 'Film/Film.en.srt', length: 50 },
-          { name: 'film-sample.mkv', path: 'Film/Sample/film-sample.mkv', length: 40 },
+          {
+            name: 'film-sample.mkv',
+            path: 'Film/Sample/film-sample.mkv',
+            length: 40,
+          },
           { name: 'Film.720p.mp4', path: 'Film/Film.720p.mp4', length: 1100 },
         ],
       });
@@ -382,7 +432,9 @@ describe('/api/torrents', () => {
       const res = await request(app).get(`/api/torrents/${HASH}`);
 
       const files: TorrentFileInfo[] = res.body.files;
-      expect(files.map(({ index, media, sample }) => ({ index, media, sample }))).toEqual([
+      expect(
+        files.map(({ index, media, sample }) => ({ index, media, sample })),
+      ).toEqual([
         { index: 0, media: 'video-may-not-play', sample: false },
         { index: 1, media: 'subtitle', sample: false },
         { index: 2, media: 'video-may-not-play', sample: true },
@@ -409,7 +461,11 @@ describe('/api/torrents', () => {
     });
 
     it('lists files while existing data is still being verified', async () => {
-      client.torrents[0].simulateMetadata({ name: 'Sintel', files: SINTEL_FILES, ready: false });
+      client.torrents[0].simulateMetadata({
+        name: 'Sintel',
+        files: SINTEL_FILES,
+        ready: false,
+      });
 
       const res = await request(app).get(`/api/torrents/${HASH}`);
 
@@ -429,9 +485,14 @@ describe('/api/torrents', () => {
           { path: ['/abs'], length: 5 },
         ],
       };
-      const parsed = await parseTorrent(toTorrentFile({ info } as unknown as ParsedTorrent));
+      const parsed = await parseTorrent(
+        toTorrentFile({ info } as unknown as ParsedTorrent),
+      );
 
-      expect(parsed.files?.map((file) => file.path)).toEqual(['etc/evil', 'abs']);
+      expect(parsed.files?.map((file) => file.path)).toEqual([
+        'etc/evil',
+        'abs',
+      ]);
     });
 
     it('returns 404 for a torrent that was never added', async () => {
@@ -493,9 +554,13 @@ describe('/api/torrents', () => {
     it('streams the torrent list now and again when it changes', async () => {
       await request(app).post('/api/torrents').send({ magnet: MAGNET });
 
-      const res = await fetch(`${baseUrl}/api/torrents/events`, { signal: controller.signal });
+      const res = await fetch(`${baseUrl}/api/torrents/events`, {
+        signal: controller.signal,
+      });
       expect(res.status).toBe(200);
-      expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
+      expect(res.headers.get('content-type')).toBe(
+        'text/event-stream; charset=utf-8',
+      );
       expect(res.headers.get('cache-control')).toBe('no-cache, no-transform');
       const reader = res.body!.getReader();
       const buffer = { text: '' };
@@ -508,11 +573,15 @@ describe('/api/torrents', () => {
 
       client.torrents[0].simulateNoPeers();
       const second = await readEvent(reader, buffer);
-      expect(second.data).toEqual([expect.objectContaining({ infoHash: HASH, state: 'noPeers' })]);
+      expect(second.data).toEqual([
+        expect.objectContaining({ infoHash: HASH, state: 'noPeers' }),
+      ]);
     });
 
     it('lets the server close while a stream is open', async () => {
-      const res = await fetch(`${baseUrl}/api/torrents/events`, { signal: controller.signal });
+      const res = await fetch(`${baseUrl}/api/torrents/events`, {
+        signal: controller.signal,
+      });
       await readEvent(res.body!.getReader(), { text: '' });
 
       // What server/index.ts does on SIGINT.
@@ -524,7 +593,9 @@ describe('/api/torrents', () => {
 
     it('unsubscribes when the client goes away', async () => {
       const subscribe = vi.spyOn(EventStream.prototype, 'subscribe');
-      const res = await fetch(`${baseUrl}/api/torrents/events`, { signal: controller.signal });
+      const res = await fetch(`${baseUrl}/api/torrents/events`, {
+        signal: controller.signal,
+      });
       await readEvent(res.body!.getReader(), { text: '' });
       const stream = subscribe.mock.contexts[0] as EventStream;
       expect(stream.size).toBe(1);
@@ -540,7 +611,9 @@ describe('/api/torrents', () => {
       await request(app).post('/api/torrents').send({ magnet: MAGNET });
       const torrent = client.torrents[0];
 
-      const res = await request(app).delete(`/api/torrents/${HASH.toUpperCase()}`);
+      const res = await request(app).delete(
+        `/api/torrents/${HASH.toUpperCase()}`,
+      );
 
       expect(res.status).toBe(204);
       expect(client.torrents).toEqual([]);

@@ -16,7 +16,10 @@ describe('createApp', () => {
   beforeAll(() => {
     // A fixture directory keeps these tests independent of `npm run build`.
     staticDir = mkdtempSync(join(tmpdir(), 'stream-public-'));
-    writeFileSync(join(staticDir, 'index.html'), '<!doctype html><title>stream</title>');
+    writeFileSync(
+      join(staticDir, 'index.html'),
+      '<!doctype html><title>stream</title>',
+    );
     client = new FakeWebTorrent();
     app = createApp({
       staticDir,
@@ -65,8 +68,12 @@ describe('createApp', () => {
 
     it('reports the peer port and torrent count once listening', async () => {
       client.simulateListening(51413);
-      const torrent = client.add('magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567');
-      torrent.simulateMetadata({ files: [{ name: 'bunny.mp4', length: 1000 }] });
+      const torrent = client.add(
+        'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567',
+      );
+      torrent.simulateMetadata({
+        files: [{ name: 'bunny.mp4', length: 1000 }],
+      });
       torrent.simulateDownload(100, { downloadSpeed: 2048 });
 
       const res = await request(app).get('/api/client');

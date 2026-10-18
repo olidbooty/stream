@@ -6,7 +6,9 @@ import type { Instance as ParsedTorrent } from 'parse-torrent';
 import wrtc from 'webrtc-polyfill';
 import WebTorrent, { type Torrent } from 'webtorrent';
 
-export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(new URL('../downloads', import.meta.url));
+export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(
+  new URL('../downloads', import.meta.url),
+);
 
 export interface TorrentConfig {
   downloadDir: string;
@@ -15,20 +17,26 @@ export interface TorrentConfig {
   dhtPort: number;
 }
 
-export type TorrentEnv = Partial<Record<'DOWNLOAD_DIR' | 'TORRENT_PORT' | 'DHT_PORT', string>>;
+export type TorrentEnv = Partial<
+  Record<'DOWNLOAD_DIR' | 'TORRENT_PORT' | 'DHT_PORT', string>
+>;
 
 function parsePort(name: string, value: string | undefined): number {
   if (value === undefined || value === '') return 0;
   const port = Number(value);
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`${name} must be a port number between 0 and 65535, got "${value}"`);
+    throw new Error(
+      `${name} must be a port number between 0 and 65535, got "${value}"`,
+    );
   }
   return port;
 }
 
 export function torrentConfig(env: TorrentEnv = process.env): TorrentConfig {
   return {
-    downloadDir: env.DOWNLOAD_DIR ? resolve(env.DOWNLOAD_DIR) : DEFAULT_DOWNLOAD_DIR,
+    downloadDir: env.DOWNLOAD_DIR
+      ? resolve(env.DOWNLOAD_DIR)
+      : DEFAULT_DOWNLOAD_DIR,
     torrentPort: parsePort('TORRENT_PORT', env.TORRENT_PORT),
     dhtPort: parsePort('DHT_PORT', env.DHT_PORT),
   };
@@ -40,7 +48,9 @@ export async function ensureDownloadDir(downloadDir: string): Promise<void> {
     await mkdir(downloadDir, { recursive: true });
     await access(downloadDir, constants.W_OK);
   } catch (err) {
-    throw new Error(`DOWNLOAD_DIR ${downloadDir} is not a writable directory`, { cause: err });
+    throw new Error(`DOWNLOAD_DIR ${downloadDir} is not a writable directory`, {
+      cause: err,
+    });
   }
 }
 
@@ -61,21 +71,32 @@ export function addTorrent(
   torrentId: string | Uint8Array | ParsedTorrent,
   downloadDir: string,
 ): Torrent {
-  const torrent = client.add(torrentId, { path: downloadDir, destroyStoreOnDestroy: true });
+  const torrent = client.add(torrentId, {
+    path: downloadDir,
+    destroyStoreOnDestroy: true,
+  });
   // A torrent error with no listener is re-emitted on the client, which the
   // server treats as fatal. One bad torrent must not stop the others.
   torrent.on('error', (err) => {
-    console.error(`torrent ${torrent.infoHash || String(torrentId)} failed:`, err);
+    console.error(
+      `torrent ${torrent.infoHash || String(torrentId)} failed:`,
+      err,
+    );
   });
   return torrent;
 }
 
 // client.remove() rejects for an unknown torrent but reports the destroy through
 // its callback, so wait for both.
-export function removeTorrent(client: WebTorrent, torrentId: string): Promise<void> {
+export function removeTorrent(
+  client: WebTorrent,
+  torrentId: string,
+): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     client
-      .remove(torrentId, { destroyStore: true }, (err) => (err ? reject(err) : resolvePromise()))
+      .remove(torrentId, { destroyStore: true }, (err) =>
+        err ? reject(err) : resolvePromise(),
+      )
       .catch(reject);
   });
 }

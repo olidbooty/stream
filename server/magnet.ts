@@ -9,7 +9,8 @@ export const MAX_MAGNET_LENGTH = 8192;
 // v2-only `btmh` links) and other strings, such as URLs or file paths that
 // WebTorrent would fetch or read, are rejected.
 export function isMagnetURI(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length > MAX_MAGNET_LENGTH) return false;
+  if (typeof value !== 'string' || value.length > MAX_MAGNET_LENGTH)
+    return false;
   if (!value.toLowerCase().startsWith('magnet:?')) return false;
   const params = new URLSearchParams(value.slice('magnet:?'.length));
   return params.getAll('xt').some((xt) => BTIH.test(xt));

@@ -40,12 +40,17 @@ describe('mediaKind', () => {
     expect(mediaKind(name)).toBe('subtitle');
   });
 
-  it.each(['poster.jpg', 'README', 'notes.txt', 'movie.mp4.part', 'movie.mkv.rar', '.mp4', 'mp4'])(
-    'treats %s as something else',
-    (name) => {
-      expect(mediaKind(name)).toBe('other');
-    },
-  );
+  it.each([
+    'poster.jpg',
+    'README',
+    'notes.txt',
+    'movie.mp4.part',
+    'movie.mkv.rar',
+    '.mp4',
+    'mp4',
+  ])('treats %s as something else', (name) => {
+    expect(mediaKind(name)).toBe('other');
+  });
 
   it('ignores case', () => {
     expect(mediaKind('MOVIE.MP4')).toBe('video');
@@ -75,18 +80,28 @@ describe('selectMedia', () => {
   });
 
   it('keeps the input order and fields of every file', () => {
-    const input = files(['Film/poster.jpg', MB], ['Film/film.mp4', 700 * MB], ['Film/film.srt', 1]);
+    const input = files(
+      ['Film/poster.jpg', MB],
+      ['Film/film.mp4', 700 * MB],
+      ['Film/film.srt', 1],
+    );
 
     const result = selectMedia(input);
 
     expect(result.files.map(({ index, path }) => ({ index, path }))).toEqual(
       input.map(({ index, path }) => ({ index, path })),
     );
-    expect(result.files.map((file) => file.media)).toEqual(['other', 'video', 'subtitle']);
+    expect(result.files.map((file) => file.media)).toEqual([
+      'other',
+      'video',
+      'subtitle',
+    ]);
   });
 
   it('reports no main file when there is no video', () => {
-    const result = selectMedia(files(['Album/01.flac', 30 * MB], ['Album/cover.jpg', MB]));
+    const result = selectMedia(
+      files(['Album/01.flac', 30 * MB], ['Album/cover.jpg', MB]),
+    );
 
     expect(result.mainFile).toBeNull();
     expect(result.videos).toEqual([]);
@@ -98,14 +113,19 @@ describe('selectMedia', () => {
 
   it('prefers a video that should play over a similar-sized one that may not', () => {
     const result = selectMedia(
-      files(['Film/Film.1080p.mkv', 2000 * MB], ['Film/Film.720p.mp4', 1100 * MB]),
+      files(
+        ['Film/Film.1080p.mkv', 2000 * MB],
+        ['Film/Film.720p.mp4', 1100 * MB],
+      ),
     );
 
     expect(result.mainFile).toBe(1);
   });
 
   it('falls back to a video that may not play', () => {
-    const result = selectMedia(files(['Film/Film.avi', 700 * MB], ['Film/Film.nfo', 1]));
+    const result = selectMedia(
+      files(['Film/Film.avi', 700 * MB], ['Film/Film.nfo', 1]),
+    );
 
     expect(result.mainFile).toBe(0);
     expect(result.files[0].media).toBe('video-may-not-play');
@@ -125,7 +145,9 @@ describe('selectMedia', () => {
   });
 
   it('does not let a short .mp4 trailer beat a full-length .mkv', () => {
-    const result = selectMedia(files(['Film/Film.mkv', 2000 * MB], ['Film/Trailer.mp4', 80 * MB]));
+    const result = selectMedia(
+      files(['Film/Film.mkv', 2000 * MB], ['Film/Trailer.mp4', 80 * MB]),
+    );
 
     expect(result.mainFile).toBe(0);
     expect(result.videos).toEqual([0, 1]);
@@ -140,14 +162,21 @@ describe('selectMedia', () => {
       ),
     );
 
-    expect(result.files.map((file) => file.sample)).toEqual([true, false, true]);
+    expect(result.files.map((file) => file.sample)).toEqual([
+      true,
+      false,
+      true,
+    ]);
     expect(result.mainFile).toBe(1);
     expect(result.videos).toEqual([1, 2, 0]);
   });
 
   it('does not treat a full-length film with "sample" in its title as a sample', () => {
     const result = selectMedia(
-      files(['The Sample/The.Sample.2020.mp4', 900 * MB], ['The Sample/Sample.mp4', 40 * MB]),
+      files(
+        ['The Sample/The.Sample.2020.mp4', 900 * MB],
+        ['The Sample/Sample.mp4', 40 * MB],
+      ),
     );
 
     expect(result.files.map((file) => file.sample)).toEqual([false, true]);
@@ -162,7 +191,9 @@ describe('selectMedia', () => {
   });
 
   it('does not match "sample" inside another word', () => {
-    const result = selectMedia(files(['Resampled.mp4', 10 * MB], ['Big.mp4', 900 * MB]));
+    const result = selectMedia(
+      files(['Resampled.mp4', 10 * MB], ['Big.mp4', 900 * MB]),
+    );
 
     expect(result.files[0].sample).toBe(false);
   });
@@ -183,7 +214,11 @@ describe('selectMedia', () => {
 
   it('orders numbers in names by value, not as text', () => {
     const result = selectMedia(
-      files(['Episode 10.mp4', MB], ['Episode 9.mp4', MB], ['episode 1.mp4', MB]),
+      files(
+        ['Episode 10.mp4', MB],
+        ['Episode 9.mp4', MB],
+        ['episode 1.mp4', MB],
+      ),
     );
 
     expect(result.videos).toEqual([2, 1, 0]);

@@ -1,12 +1,24 @@
-import express, { type ErrorRequestHandler, type Request, type Response, Router } from 'express';
-import parseTorrent, { type Instance as ParsedTorrent, toMagnetURI } from 'parse-torrent';
+import express, {
+  type ErrorRequestHandler,
+  type Request,
+  type Response,
+  Router,
+} from 'express';
+import parseTorrent, {
+  type Instance as ParsedTorrent,
+  toMagnetURI,
+} from 'parse-torrent';
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
 import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { isMagnetURI } from './magnet.js';
 import { type FileMedia, selectMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
-import { type TorrentState, TorrentWatch, torrentState } from './torrent-state.js';
+import {
+  type TorrentState,
+  TorrentWatch,
+  torrentState,
+} from './torrent-state.js';
 
 // A .torrent file holds 20 bytes per piece, so even a 100 GB torrent with
 // 256 KiB pieces needs about 8 MB. Most are well under 1 MB.
@@ -71,7 +83,11 @@ function hasMetadata(torrent: Torrent): boolean {
 
 // Right after add() the real client hasn't parsed the torrent yet, so the
 // caller passes the parsed torrent it already has.
-function summarize(torrent: Torrent, watch: TorrentWatch, parsed?: ParsedTorrent): TorrentSummary {
+function summarize(
+  torrent: Torrent,
+  watch: TorrentWatch,
+  parsed?: ParsedTorrent,
+): TorrentSummary {
   return {
     infoHash: torrent.infoHash || (parsed?.infoHash ?? ''),
     name: torrent.name || parsed?.name || null,
@@ -96,7 +112,12 @@ function summarize(torrent: Torrent, watch: TorrentWatch, parsed?: ParsedTorrent
 
 function describe(torrent: Torrent, watch: TorrentWatch): TorrentDetail {
   if (!hasMetadata(torrent)) {
-    return { ...summarize(torrent, watch), files: null, mainFile: null, videos: null };
+    return {
+      ...summarize(torrent, watch),
+      files: null,
+      mainFile: null,
+      videos: null,
+    };
   }
   const { files, mainFile, videos } = selectMedia(
     torrent.files.map((file, index) => ({
@@ -109,11 +130,19 @@ function describe(torrent: Torrent, watch: TorrentWatch): TorrentDetail {
   return { ...summarize(torrent, watch), files, mainFile, videos };
 }
 
-function sendError(res: Response, status: number, error: string, extra: object = {}): void {
+function sendError(
+  res: Response,
+  status: number,
+  error: string,
+  extra: object = {},
+): void {
   res.status(status).json({ error, ...extra });
 }
 
-export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): Router {
+export function torrentsRouter({
+  client,
+  downloadDir,
+}: TorrentsRouterOptions): Router {
   const router = Router();
   const watch = new TorrentWatch(client);
 
@@ -164,7 +193,10 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
   router.post(
     '/',
     express.json(),
-    express.raw({ type: 'application/x-bittorrent', limit: MAX_TORRENT_FILE_BYTES }),
+    express.raw({
+      type: 'application/x-bittorrent',
+      limit: MAX_TORRENT_FILE_BYTES,
+    }),
     async (req, res) => {
       let torrentId: string | Uint8Array;
       if (req.is('application/x-bittorrent')) {
@@ -175,7 +207,11 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
       } else if (req.is('application/json')) {
         const magnet: unknown = req.body?.magnet;
         if (!isMagnetURI(magnet)) {
-          return sendError(res, 400, 'magnet must be a magnet: link with a BitTorrent info hash');
+          return sendError(
+            res,
+            400,
+            'magnet must be a magnet: link with a BitTorrent info hash',
+          );
         }
         torrentId = magnet;
       } else {
@@ -202,7 +238,9 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
 
       // Hand over the parsed torrent so WebTorrent never re-reads the input.
       const torrent = addTorrent(client, parsed, downloadDir);
-      watch.watch(torrent, parsed.infoHash, () => summarize(torrent, watch, parsed));
+      watch.watch(torrent, parsed.infoHash, () =>
+        summarize(torrent, watch, parsed),
+      );
       res
         .status(201)
         .location(`${req.baseUrl}/${parsed.infoHash}`)

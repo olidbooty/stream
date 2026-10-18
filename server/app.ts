@@ -3,7 +3,9 @@ import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
 import { torrentsRouter } from './torrents-api.js';
 
-export const DEFAULT_STATIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
+export const DEFAULT_STATIC_DIR = fileURLToPath(
+  new URL('../public', import.meta.url),
+);
 
 export interface AppOptions {
   // Passed in rather than created here, so tests can hand in FakeWebTorrent.

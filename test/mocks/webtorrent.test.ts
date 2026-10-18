@@ -41,7 +41,10 @@ describe('WebTorrent mock', () => {
 
     expect(onMetadata).toHaveBeenCalledOnce();
     expect(onTorrent).toHaveBeenCalledWith(torrent);
-    expect(torrent.files.map((file) => file.name)).toEqual(['bunny.mp4', 'poster.jpg']);
+    expect(torrent.files.map((file) => file.name)).toEqual([
+      'bunny.mp4',
+      'poster.jpg',
+    ]);
     expect(torrent.length).toBe(1024);
     expect(await client.get(MAGNET)).toBe(torrent);
   });
@@ -53,7 +56,10 @@ describe('WebTorrent mock', () => {
     torrent.on('ready', onReady);
 
     expect(torrent.metadata).toBeNull();
-    torrent.simulateMetadata({ files: [{ name: 'bunny.mp4', length: 1000 }], ready: false });
+    torrent.simulateMetadata({
+      files: [{ name: 'bunny.mp4', length: 1000 }],
+      ready: false,
+    });
 
     expect(torrent.metadata).not.toBeNull();
     expect(torrent.ready).toBe(false);
@@ -153,7 +159,10 @@ describe('WebTorrent mock', () => {
   it('records the download path and whether the store is deleted', async () => {
     const client = createClient();
     const kept = client.add(MAGNET, { path: '/downloads' });
-    const deleted = client.add('other', { infoHash: 'f'.repeat(40), destroyStoreOnDestroy: true });
+    const deleted = client.add('other', {
+      infoHash: 'f'.repeat(40),
+      destroyStoreOnDestroy: true,
+    });
 
     expect(kept.path).toBe('/downloads');
     await client.remove(MAGNET, { destroyStore: true });
@@ -168,12 +177,18 @@ describe('WebTorrent mock', () => {
     const hash = 'f'.repeat(40);
 
     expect(client.add({ infoHash: hash.toUpperCase() }).infoHash).toBe(hash);
-    expect(client.add(`magnet:?xt=urn:btih:${'a'.repeat(40)}`).infoHash).toBe('a'.repeat(40));
-    expect(client.add(new Uint8Array(4)).infoHash).toBe('0123456789abcdef0123456789abcdef01234567');
+    expect(client.add(`magnet:?xt=urn:btih:${'a'.repeat(40)}`).infoHash).toBe(
+      'a'.repeat(40),
+    );
+    expect(client.add(new Uint8Array(4)).infoHash).toBe(
+      '0123456789abcdef0123456789abcdef01234567',
+    );
   });
 
   it('reports its peer port once listening', () => {
-    const client = new WebTorrent({ torrentPort: 51413 }) as unknown as FakeWebTorrent;
+    const client = new WebTorrent({
+      torrentPort: 51413,
+    }) as unknown as FakeWebTorrent;
     const onListening = vi.fn();
     client.on('listening', onListening);
 

@@ -150,7 +150,7 @@ to `app.ts`), as Node's ESM resolution expects.
 
 [Biome](https://biomejs.dev) lints and formats the code, configured in
 `biome.json`: 2-space indent, single quotes, semicolons, trailing commas,
-100-column lines, sorted imports and the recommended lint rules. Run
+80-column lines, sorted imports and the recommended lint rules. Run
 `npm run lint` to check and `npm run lint:fix` to fix what it can. Use
 `import type` for type-only imports (`verbatimModuleSyntax` enforces it), and
 prefix unused parameters with `_`, such as Express's `req`.

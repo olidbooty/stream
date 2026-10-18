@@ -24,7 +24,9 @@ describe('formatEvent', () => {
   it('writes a named event with one data line', () => {
     const data = JSON.stringify({ name: 'two\nlines' });
 
-    expect(formatEvent('torrents', data)).toBe('event: torrents\ndata: {"name":"two\\nlines"}\n\n');
+    expect(formatEvent('torrents', data)).toBe(
+      'event: torrents\ndata: {"name":"two\\nlines"}\n\n',
+    );
   });
 });
 
@@ -35,7 +37,10 @@ describe('EventStream', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     state = { progress: 0 };
-    stream = new EventStream('torrents', () => state, { intervalMs: 1000, keepAliveMs: 15_000 });
+    stream = new EventStream('torrents', () => state, {
+      intervalMs: 1000,
+      keepAliveMs: 15_000,
+    });
   });
 
   afterEach(() => {
@@ -71,7 +76,10 @@ describe('EventStream', () => {
     expect(sink.chunks).toHaveLength(1);
 
     vi.advanceTimersByTime(1000);
-    expect(sink.chunks).toEqual([formatEvent('torrents', '{"progress":0}'), ': keep-alive\n\n']);
+    expect(sink.chunks).toEqual([
+      formatEvent('torrents', '{"progress":0}'),
+      ': keep-alive\n\n',
+    ]);
   });
 
   it('gives each subscriber what changed since it last heard', () => {

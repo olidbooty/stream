@@ -17,7 +17,8 @@ const client = createTorrentClient(config);
 
 client.on('listening', () => {
   const address = client.address();
-  const peerPort = address && typeof address === 'object' ? address.port : config.torrentPort;
+  const peerPort =
+    address && typeof address === 'object' ? address.port : config.torrentPort;
   console.log(`torrent client listening for peers on port ${peerPort}`);
   console.log(`  downloads go to ${config.downloadDir}`);
 });
@@ -29,14 +30,18 @@ client.on('error', (err) => {
   process.exit(1);
 });
 
-const server = createApp({ client, downloadDir: config.downloadDir }).listen(port, host, () => {
-  console.log(`stream listening on http://localhost:${port}`);
-  if (host === '0.0.0.0') {
-    for (const address of lanAddresses()) {
-      console.log(`  on your network: http://${address}:${port}`);
+const server = createApp({ client, downloadDir: config.downloadDir }).listen(
+  port,
+  host,
+  () => {
+    console.log(`stream listening on http://localhost:${port}`);
+    if (host === '0.0.0.0') {
+      for (const address of lanAddresses()) {
+        console.log(`  on your network: http://${address}:${port}`);
+      }
     }
-  }
-});
+  },
+);
 
 let shuttingDown = false;
 

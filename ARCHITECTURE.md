@@ -15,6 +15,8 @@ browser                                   Node (server/)
 └──────────────────────────────┘          │   /api/torrents (add, list,   │
                                           │     remove)                   │
                                           │   /api/torrents/events (SSE)  │
+                                          │   .../files/:index/stream     │
+                                          │     (HTTP Range)              │
                                           │   404 for everything else     │
                                           │ WebTorrent client (index.ts)  │
                                           │   TCP, uTP, DHT, WebRTC       │
@@ -275,21 +277,45 @@ but moves it:
 
 ### Streaming
 
-`file.createReadStream({ start, end })` returns a stream for a byte range and
-prioritises the pieces it covers. The torrent's piece strategy already defaults
-to `sequential` in `webtorrent@3`, so no custom piece selection is needed
-(Decision #2); 3.3 checks this while seeking. Serve it from an Express route that:
+`GET /api/torrents/:infoHash/files/:index/stream` serves one file of a torrent
+(`streamFile()` in `server/file-stream.ts`). `file.createReadStream({ start,
+end })` returns a stream for a byte range and prioritises the pieces it
+covers, so a `<video>` can start and seek long before the download is done.
+The torrent's piece strategy already defaults to `sequential` in
+`webtorrent@3`, so no custom piece selection is needed (Decision #2); 3.3
+checks this while seeking.
 
-- parses the `Range` header and responds `206` with `Content-Range`, or `416`
-  for a range outside the file
-- sets `Accept-Ranges: bytes`, `Content-Length` and a `Content-Type` from
-  the file extension
-- destroys the read stream when the request closes, so seeking doesn't leave
-  old streams running
+- **Ranges.** Express's `req.range()` parses the header. One byte range gets
+  `206` with `Content-Range`; a range past the end gets `416` with
+  `Content-Range: bytes */<size>`. No `Range` header, a malformed one, another
+  unit or several ranges get the whole file with `200`, as HTTP allows; browsers
+  ask for one range at a time. Every response has `Accept-Ranges: bytes` and
+  `Content-Length`. A `HEAD` request or an empty file never opens a stream, so
+  WebTorrent isn't asked for pieces nobody reads.
+- **When it can stream.** As soon as the metadata is in (`409` before that,
+  and for a failed torrent). It doesn't wait for `ready`: WebTorrent accepts
+  selections while it verifies data already on disk, and the stream yields
+  each piece once it is verified or downloaded.
+- **Content type.** The file's own `type` (WebTorrent looks it up from the
+  extension), but only for `video/*`, `audio/*` and `text/vtt`. Anything else
+  is sent as `application/octet-stream` with `Content-Disposition: attachment`,
+  and every response has `X-Content-Type-Options: nosniff`. Otherwise an
+  `.html` or `.svg` file in a torrent would run script on our origin, where it
+  could call the API.
+- **Closing streams.** Each seek in a `<video>` aborts one request and starts
+  another, and a stream left running keeps its pieces prioritised. The route
+  copies the stream by hand rather than with `stream.pipeline()`, because
+  `pipeline()` doesn't destroy WebTorrent's streams (they are `streamx`
+  streams, not Node ones) when the response closes. It destroys the stream
+  when the response closes, writes no more than the range (WebTorrent reads
+  `end: 0` as "to the end of the file", so `bytes=0-0` would otherwise get the
+  whole file), and drops the connection if the stream stops short, for
+  example when the torrent is removed mid-stream, so the browser sees an error
+  rather than a body that is silently cut short.
 
 WebTorrent also has `client.createServer()`, which serves files over HTTP on
-its own port. Prefer the Express route: one port, our own 404s, and it can be
-tested with supertest.
+its own port. The Express route is used instead: one port, our own 404s, and
+it can be tested with supertest.
 
 ### Seeding
 

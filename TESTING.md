@@ -37,7 +37,11 @@ const app = createApp({ staticDir, client: client as unknown as WebTorrent });
 ```
 
 Streaming routes return byte ranges, so assert on the status (`206`/`416`),
-`Content-Range` and the body length, not just `200`.
+`Content-Range` and the body, not just `200`. supertest only buffers text and
+JSON, so give it a `.parse()` that collects the bytes (see `get()` in the
+stream tests in `server/torrents-api.test.ts`). What happens when the browser
+hangs up needs a real connection: those tests use `app.listen(0)`, `fetch`
+and an `AbortController`, like the event stream test.
 
 Server-sent events never end, so supertest can't read them. Test the pieces
 instead: `EventStream` with a fake sink and `vi.useFakeTimers()`
@@ -116,6 +120,14 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
   from `client.torrents`, then `error` is emitted on the torrent, or on the
   client if the torrent has no `error` listener, then `close`
 - `client.simulateError(err)` emits `error` on the client
+- `file.createReadStream({ start, end })` streams the range and records it in
+  `file.readStreams` (`{ start, end, stream }`). Byte `i` of a fake file is
+  `i % 256`; `fakeFileBytes(start, end)` builds the expected body. Like the
+  real file, `end: 0` reads to the end of the file. A file made with
+  `available: n` serves only its first `n` bytes and then waits, as the real
+  stream waits for pieces, until it is destroyed
+- `file.type` is the MIME type from the extension (a few common ones), or
+  the `type` option
 - `file.streamTo(element)` records the element in `file.streamedTo`
 - `client.simulateListening(port)` emits `listening` and makes `address()`
   return the port (it returns `null` before that and after `destroy()`)
@@ -138,9 +150,8 @@ the real parser runs and no fixture file is needed.
 If the app starts using more of the WebTorrent API, add it to the fake (and
 to `test/mocks/webtorrent.test.ts`) rather than mocking ad hoc in each test.
 
-The fake doesn't cover `file.createReadStream({ start, end })` yet; 3.2 adds
-it for streaming. The fake is plain TypeScript on
-`node:events`, so it works in both the `server` and `client` test projects.
+The fake is plain TypeScript on `node:events` and `node:stream`, so it works
+in both the `server` and `client` test projects.
 
 ## Manual testing
 

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 
 // Test double for the WebTorrent client. Unit tests never join a real swarm:
 // it would open ports and depend on the network. These fakes expose the subset
@@ -34,6 +35,43 @@ export interface FakeFileOptions {
   name: string;
   length?: number;
   path?: string;
+  // MIME type; defaults from the extension, like the real file's.
+  type?: string;
+  // Bytes a read stream can serve before it waits, as the real one waits for
+  // pieces that haven't arrived. Defaults to the whole file.
+  available?: number;
+}
+
+// A small stand-in for the `mime` package the real client uses.
+const TYPES: Record<string, string> = {
+  html: 'text/html',
+  mkv: 'video/x-matroska',
+  mp3: 'audio/mpeg',
+  mp4: 'video/mp4',
+  srt: 'application/x-subrip',
+  vtt: 'text/vtt',
+  webm: 'video/webm',
+};
+
+function typeOf(name: string): string {
+  const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+  return TYPES[ext] ?? 'application/octet-stream';
+}
+
+// The fake file's content: byte i is i % 256, so tests can check which part
+// of the file they got without the fake holding it in memory.
+export function fakeFileBytes(start: number, end: number): Buffer {
+  const bytes = Buffer.alloc(end - start);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = (start + i) % 256;
+  return bytes;
+}
+
+const FAKE_CHUNK_BYTES = 16 * 1024;
+
+export interface FakeReadStream {
+  start: number;
+  end: number;
+  stream: Readable;
 }
 
 export interface FakeTorrentOptions {
@@ -54,12 +92,47 @@ export class FakeFile {
   downloaded = 0;
   progress = 0;
   selected = true;
+  type: string;
+  available: number;
   streamedTo: HTMLMediaElement | null = null;
+  // Every stream createReadStream() opened, with the range it was asked for.
+  readStreams: FakeReadStream[] = [];
 
-  constructor({ name, length = 0, path = name }: FakeFileOptions) {
+  constructor({
+    name,
+    length = 0,
+    path = name,
+    type = typeOf(name),
+    available = length,
+  }: FakeFileOptions) {
     this.name = name;
     this.path = path;
     this.length = length;
+    this.type = type;
+    this.available = available;
+  }
+
+  // Like the real file, a falsy `end` (including 0) reads to the end of the
+  // file, so callers asking for just the first byte must stop it themselves.
+  createReadStream({ start = 0, end }: { start?: number; end?: number } = {}) {
+    const last = end && end < this.length ? end : this.length - 1;
+    let position = start;
+    const stream = new Readable({
+      read: () => {
+        if (position > last) return void stream.push(null);
+        const stop = Math.min(
+          last + 1,
+          this.available,
+          position + FAKE_CHUNK_BYTES,
+        );
+        // Past `available`: wait forever, until the stream is destroyed.
+        if (position >= stop) return;
+        stream.push(fakeFileBytes(position, stop));
+        position = stop;
+      },
+    });
+    this.readStreams.push({ start, end: last, stream });
+    return stream;
   }
 
   select() {

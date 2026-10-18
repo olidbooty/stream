@@ -52,6 +52,7 @@ There is no UI for torrents yet (2.5), so use the API directly:
 | `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length, `media`, `sample`), the `mainFile` to play and the `videos` to list. While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files`, `length`, `mainFile` and `videos` are `null`. For a failed torrent `files`, `mainFile` and `videos` are `null` |
 | `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
 | `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
+| `GET /api/torrents/:infoHash/files/:index/stream` | The file's bytes, for `<video src>`. Honours `Range` (`206` with `Content-Range`, `416` past the end), so playback and seeking start before the download finishes. `409` while the metadata is pending or for a failed torrent, `404` for an unknown file. Video, audio and `.vtt` files are served inline; anything else as a download (`application/octet-stream`) |
 | `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files, or clear a failed one. `204`, or `404` if it isn't there |
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
 
@@ -95,6 +96,8 @@ curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/json' \
 curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/x-bittorrent' \
   --data-binary @sintel.torrent
 curl -N localhost:3000/api/torrents/events   # Ctrl+C to stop
+curl -r 0-1023 -o head.bin \
+  localhost:3000/api/torrents/08ada5a7a6183aae1e09d831df6748d566095a10/files/0/stream
 ```
 
 ```
@@ -118,6 +121,7 @@ server/torrent-client.ts  WebTorrent client setup, config from env vars
 server/torrents-api.ts    /api/torrents routes
 server/torrent-state.ts   torrent state (connecting, noPeers, ...) and failed torrents
 server/event-stream.ts    server-sent events broadcaster
+server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation
 server/media.ts           classifies a torrent's files and picks the one to play
 public/                   build output served by Express (gitignored)

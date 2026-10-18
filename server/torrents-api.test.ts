@@ -9,7 +9,11 @@ import parseTorrent, {
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
-import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
+import {
+  type FakeFileOptions,
+  FakeWebTorrent,
+  fakeFileBytes,
+} from '../test/mocks/webtorrent.js';
 import { EventStream } from './event-stream.js';
 import {
   MAX_TORRENT_FILE_BYTES,
@@ -648,6 +652,280 @@ describe('/api/torrents', () => {
       controller.abort();
 
       await vi.waitFor(() => expect(stream.size).toBe(0));
+    });
+  });
+
+  describe('GET /:infoHash/files/:index/stream', () => {
+    const LENGTH = 100_000;
+    const STREAM = `/api/torrents/${HASH}/files/0/stream`;
+
+    async function addWithFiles(files: FakeFileOptions[]) {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      const torrent = client.torrents[0];
+      torrent.simulateMetadata({ name: 'Sintel', files });
+      return torrent;
+    }
+
+    // supertest only buffers text and JSON by default.
+    function get(path: string, range?: string) {
+      const req = request(app)
+        .get(path)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        });
+      return range === undefined ? req : req.set('Range', range);
+    }
+
+    it('sends the whole file without a Range header', async () => {
+      await addWithFiles([{ name: 'Sintel.mp4', length: LENGTH }]);
+
+      const res = await get(STREAM);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toBe('video/mp4');
+      expect(res.headers['accept-ranges']).toBe('bytes');
+      expect(res.headers['content-length']).toBe(String(LENGTH));
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['content-disposition']).toBeUndefined();
+      expect(res.body).toEqual(fakeFileBytes(0, LENGTH));
+    });
+
+    it('sends the requested range with 206', async () => {
+      const torrent = await addWithFiles([
+        { name: 'Sintel.mp4', length: LENGTH },
+      ]);
+
+      const res = await get(STREAM, 'bytes=40000-49999');
+
+      expect(res.status).toBe(206);
+      expect(res.headers['content-range']).toBe(`bytes 40000-49999/${LENGTH}`);
+      expect(res.headers['content-length']).toBe('10000');
+      expect(res.body).toEqual(fakeFileBytes(40000, 50000));
+      // Only that range is read, so WebTorrent prioritises its pieces.
+      expect(torrent.files[0].readStreams).toMatchObject([
+        { start: 40000, end: 49999 },
+      ]);
+    });
+
+    it('sends open-ended and suffix ranges', async () => {
+      await addWithFiles([{ name: 'Sintel.mp4', length: LENGTH }]);
+
+      const from = await get(STREAM, 'bytes=99000-');
+      const last = await get(STREAM, 'bytes=-500');
+
+      expect(from.status).toBe(206);
+      expect(from.headers['content-range']).toBe(`bytes 99000-99999/${LENGTH}`);
+      expect(from.body).toEqual(fakeFileBytes(99000, LENGTH));
+      expect(last.status).toBe(206);
+      expect(last.headers['content-range']).toBe(`bytes 99500-99999/${LENGTH}`);
+      expect(last.body).toEqual(fakeFileBytes(99500, LENGTH));
+    });
+
+    it('sends only the first byte for bytes=0-0', async () => {
+      const torrent = await addWithFiles([
+        { name: 'Sintel.mp4', length: LENGTH },
+      ]);
+
+      const res = await get(STREAM, 'bytes=0-0');
+
+      expect(res.status).toBe(206);
+      expect(res.headers['content-range']).toBe(`bytes 0-0/${LENGTH}`);
+      expect(res.body).toEqual(fakeFileBytes(0, 1));
+      // WebTorrent streams the whole file for end: 0, so the route stops it.
+      expect(torrent.files[0].readStreams[0].stream.destroyed).toBe(true);
+    });
+
+    it('returns 416 for a range past the end of the file', async () => {
+      const torrent = await addWithFiles([
+        { name: 'Sintel.mp4', length: LENGTH },
+      ]);
+
+      const res = await get(STREAM, `bytes=${LENGTH}-`);
+
+      expect(res.status).toBe(416);
+      expect(res.headers['content-range']).toBe(`bytes */${LENGTH}`);
+      expect(torrent.files[0].readStreams).toEqual([]);
+    });
+
+    it.each([
+      ['malformed', 'bytes=abc'],
+      ['several', 'bytes=0-9, 500-599'],
+      ['not in bytes', 'items=0-9'],
+    ])('sends the whole file for %s ranges', async (_kind, range) => {
+      await addWithFiles([{ name: 'Sintel.mp4', length: LENGTH }]);
+
+      const res = await get(STREAM, range);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-range']).toBeUndefined();
+      expect(res.body).toHaveLength(LENGTH);
+    });
+
+    it('answers HEAD without reading the file', async () => {
+      const torrent = await addWithFiles([
+        { name: 'Sintel.mp4', length: LENGTH },
+      ]);
+
+      const res = await request(app).head(STREAM).set('Range', 'bytes=0-99');
+
+      expect(res.status).toBe(206);
+      expect(res.headers['content-length']).toBe('100');
+      expect(res.headers['content-range']).toBe(`bytes 0-99/${LENGTH}`);
+      expect(torrent.files[0].readStreams).toEqual([]);
+    });
+
+    it('sends an empty file without reading it', async () => {
+      const torrent = await addWithFiles([{ name: 'empty.mp4', length: 0 }]);
+
+      const res = await get(STREAM);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-length']).toBe('0');
+      expect(torrent.files[0].readStreams).toEqual([]);
+    });
+
+    it('serves subtitles and audio inline', async () => {
+      await addWithFiles([
+        { name: 'Sintel.mp4', length: LENGTH },
+        { name: 'Sintel.en.vtt', length: 100 },
+        { name: 'score.mp3', length: 100 },
+      ]);
+
+      const vtt = await get(`/api/torrents/${HASH}/files/1/stream`);
+      const mp3 = await get(`/api/torrents/${HASH}/files/2/stream`);
+
+      expect(vtt.headers['content-type']).toBe('text/vtt; charset=utf-8');
+      expect(vtt.headers['content-disposition']).toBeUndefined();
+      expect(mp3.headers['content-type']).toBe('audio/mpeg');
+    });
+
+    it('sends other files as downloads, so they cannot run script', async () => {
+      await addWithFiles([{ name: 'index.html', length: 100 }]);
+
+      const res = await get(STREAM);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toBe('application/octet-stream');
+      expect(res.headers['content-disposition']).toBe(
+        'attachment; filename=index.html',
+      );
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it('returns 409 while the metadata is pending', async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+
+      const res = await request(app).get(STREAM);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatch(/still being fetched/);
+    });
+
+    it('streams before WebTorrent has checked existing data', async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      client.torrents[0].simulateMetadata({
+        files: [{ name: 'Sintel.mp4', length: 100 }],
+        ready: false,
+      });
+
+      const res = await get(STREAM, 'bytes=0-9');
+
+      expect(res.status).toBe(206);
+      expect(res.body).toEqual(fakeFileBytes(0, 10));
+    });
+
+    it('returns 409 for a failed torrent', async () => {
+      const torrent = await addWithFiles([
+        { name: 'Sintel.mp4', length: LENGTH },
+      ]);
+      torrent.simulateError(new Error('disk full'));
+
+      const res = await request(app).get(STREAM);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatch(/failed/);
+    });
+
+    it('returns 404 for an unknown torrent or file', async () => {
+      const torrent = await request(app).get(STREAM);
+      await addWithFiles([{ name: 'Sintel.mp4', length: LENGTH }]);
+      const file = await request(app).get(
+        `/api/torrents/${HASH}/files/1/stream`,
+      );
+
+      expect(torrent.status).toBe(404);
+      expect(file.status).toBe(404);
+      expect(file.body).toEqual({ error: 'No file with that index' });
+    });
+
+    it.each(['abc', '-1', '01', '1.5', '9999999999'])(
+      'returns 400 for the file index %s',
+      async (index) => {
+        await addWithFiles([{ name: 'Sintel.mp4', length: LENGTH }]);
+
+        const res = await request(app).get(
+          `/api/torrents/${HASH}/files/${index}/stream`,
+        );
+
+        expect(res.status).toBe(400);
+      },
+    );
+
+    describe('over a connection', () => {
+      let server: Server;
+      let baseUrl: string;
+
+      beforeEach(async () => {
+        server = app.listen(0, '127.0.0.1');
+        await once(server, 'listening');
+        baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      });
+
+      afterEach(async () => {
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      });
+
+      // Only the first 1000 bytes have "arrived", so the stream then waits.
+      async function startStream(signal?: AbortSignal) {
+        const torrent = await addWithFiles([
+          { name: 'Sintel.mp4', length: LENGTH, available: 1000 },
+        ]);
+        const res = await fetch(`${baseUrl}${STREAM}`, { signal });
+        const reader = res.body!.getReader();
+        const { value } = await reader.read();
+        expect(value?.length).toBeGreaterThan(0);
+        return { reader, file: torrent.files[0] };
+      }
+
+      it('destroys the read stream when the browser hangs up', async () => {
+        const controller = new AbortController();
+        const { file } = await startStream(controller.signal);
+        expect(file.readStreams[0].stream.destroyed).toBe(false);
+
+        controller.abort();
+
+        await vi.waitFor(() =>
+          expect(file.readStreams[0].stream.destroyed).toBe(true),
+        );
+      });
+
+      it('drops the connection if the stream stops short', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { reader, file } = await startStream();
+
+        // As when the torrent is removed mid-stream.
+        file.readStreams[0].stream.destroy(new Error('torrent removed'));
+
+        await expect(
+          (async () => {
+            for (;;) if ((await reader.read()).done) return;
+          })(),
+        ).rejects.toThrow();
+      });
     });
   });
 

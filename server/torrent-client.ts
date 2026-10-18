@@ -2,8 +2,8 @@ import { constants } from 'node:fs';
 import { access, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import wrtc from 'webrtc-polyfill';
 import type { Instance as ParsedTorrent } from 'parse-torrent';
+import wrtc from 'webrtc-polyfill';
 import WebTorrent, { type Torrent } from 'webtorrent';
 
 export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(new URL('../downloads', import.meta.url));

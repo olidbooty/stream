@@ -1,10 +1,10 @@
-import type { Express } from 'express';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Express } from 'express';
 import request from 'supertest';
-import type WebTorrent from 'webtorrent';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type WebTorrent from 'webtorrent';
 import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import { createApp } from './app.js';
 

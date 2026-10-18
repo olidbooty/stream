@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mediaKind, selectMedia, type MediaFileInput } from './media.js';
+import { type MediaFileInput, mediaKind, selectMedia } from './media.js';
 
 const MB = 1024 * 1024;
 

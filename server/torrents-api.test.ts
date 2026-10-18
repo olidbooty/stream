@@ -1,14 +1,14 @@
-import express, { type Express } from 'express';
-import type { AddressInfo } from 'node:net';
-import parseTorrent, { toTorrentFile, type Instance as ParsedTorrent } from 'parse-torrent';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import express, { type Express } from 'express';
+import parseTorrent, { type Instance as ParsedTorrent, toTorrentFile } from 'parse-torrent';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
 import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import { EventStream } from './event-stream.js';
-import { MAX_TORRENT_FILE_BYTES, torrentsRouter, type TorrentFileInfo } from './torrents-api.js';
+import { MAX_TORRENT_FILE_BYTES, type TorrentFileInfo, torrentsRouter } from './torrents-api.js';
 
 const HASH = '0123456789abcdef0123456789abcdef01234567';
 const MAGNET = `magnet:?xt=urn:btih:${HASH}&dn=Sintel`;
@@ -502,7 +502,9 @@ describe('/api/torrents', () => {
 
       const first = await readEvent(reader, buffer);
       expect(first.event).toBe('torrents');
-      expect(first.data).toEqual([expect.objectContaining({ infoHash: HASH, state: 'connecting' })]);
+      expect(first.data).toEqual([
+        expect.objectContaining({ infoHash: HASH, state: 'connecting' }),
+      ]);
 
       client.torrents[0].simulateNoPeers();
       const second = await readEvent(reader, buffer);

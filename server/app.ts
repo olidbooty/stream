@@ -1,5 +1,5 @@
-import express, { type Express } from 'express';
 import { fileURLToPath } from 'node:url';
+import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
 import { torrentsRouter } from './torrents-api.js';
 
@@ -25,7 +25,7 @@ export function createApp({
   app.use(express.static(staticDir));
 
   // Whether the torrent client is up and which peer port to forward (see 2.6).
-  app.get('/api/client', (req, res) => {
+  app.get('/api/client', (_req, res) => {
     const address = client.address();
     res.json({
       listening: address !== null,
@@ -38,7 +38,7 @@ export function createApp({
 
   app.use('/api/torrents', torrentsRouter({ client, downloadDir }));
 
-  app.use((req, res) => {
+  app.use((_req, res) => {
     res.status(404).type('text/plain').send('Not Found');
   });
 

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
-import { FakeWebTorrent, type FakeTorrent } from '../test/mocks/webtorrent.js';
+import { type FakeTorrent, FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import {
   MAX_FAILED_TORRENTS,
-  TorrentWatch,
-  torrentState,
   type TorrentState,
   type TorrentStateInput,
+  TorrentWatch,
+  torrentState,
 } from './torrent-state.js';
 import type { TorrentSummary } from './torrents-api.js';
 

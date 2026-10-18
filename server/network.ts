@@ -1,4 +1,4 @@
-import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
+import { type NetworkInterfaceInfo, networkInterfaces } from 'node:os';
 
 // The fields lanAddresses reads; os.networkInterfaces() returns a superset.
 export type NetworkInterfaces = Record<

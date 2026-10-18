@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_MAGNET_LENGTH, isMagnetURI } from './magnet.js';
+import { isMagnetURI, MAX_MAGNET_LENGTH } from './magnet.js';
 
 const HEX = '0123456789abcdef0123456789abcdef01234567';
 const BASE32 = 'aerukz4jvpgw66ckaerukz4jvpgw66ck';

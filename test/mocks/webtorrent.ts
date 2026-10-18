@@ -120,7 +120,11 @@ export class FakeTorrent extends EventEmitter {
     name = 'fixture',
     files = [],
     ready = true,
-  }: { name?: string; files?: (FakeFile | FakeFileOptions)[]; ready?: boolean } = {}): void {
+  }: {
+    name?: string;
+    files?: (FakeFile | FakeFileOptions)[];
+    ready?: boolean;
+  } = {}): void {
     this.name = name;
     this.files = files.map((file) => (file instanceof FakeFile ? file : new FakeFile(file)));
     this.length = this.files.reduce((total, file) => total + file.length, 0);
@@ -136,7 +140,10 @@ export class FakeTorrent extends EventEmitter {
 
   simulateDownload(
     bytes: number,
-    { downloadSpeed = bytes, numPeers = this.numPeers }: { downloadSpeed?: number; numPeers?: number } = {},
+    {
+      downloadSpeed = bytes,
+      numPeers = this.numPeers,
+    }: { downloadSpeed?: number; numPeers?: number } = {},
   ): void {
     this.downloaded = Math.min(this.length, this.downloaded + bytes);
     this.downloadSpeed = downloadSpeed;
@@ -254,10 +261,14 @@ export class FakeWebTorrent extends EventEmitter {
   }
 
   private find(torrentId: unknown): FakeTorrent | null {
-    return this.torrents.find(
-      (torrent) =>
-        torrent === torrentId || torrent.infoHash === torrentId || torrent.magnetURI === torrentId,
-    ) ?? null;
+    return (
+      this.torrents.find(
+        (torrent) =>
+          torrent === torrentId ||
+          torrent.infoHash === torrentId ||
+          torrent.magnetURI === torrentId,
+      ) ?? null
+    );
   }
 
   // Rejects for an unknown torrent; reports the destroy through the callback.

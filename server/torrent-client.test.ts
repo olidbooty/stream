@@ -1,13 +1,13 @@
 import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type WebTorrent from 'webtorrent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeWebTorrent, type FakeTorrent } from '../test/mocks/webtorrent.js';
+import type WebTorrent from 'webtorrent';
+import { type FakeTorrent, FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import {
-  DEFAULT_DOWNLOAD_DIR,
   addTorrent,
   createTorrentClient,
+  DEFAULT_DOWNLOAD_DIR,
   destroyTorrentClient,
   ensureDownloadDir,
   removeTorrent,
@@ -110,12 +110,19 @@ describe('addTorrent and removeTorrent', () => {
     const onClientError = vi.fn();
     fake.on('error', onClientError);
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const torrent = addTorrent(fake as unknown as WebTorrent, MAGNET, '/srv/downloads') as unknown as FakeTorrent;
+    const torrent = addTorrent(
+      fake as unknown as WebTorrent,
+      MAGNET,
+      '/srv/downloads',
+    ) as unknown as FakeTorrent;
 
     torrent.simulateError(new Error('disk full'));
 
     expect(onClientError).not.toHaveBeenCalled();
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('failed'), new Error('disk full'));
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('failed'),
+      new Error('disk full'),
+    );
     consoleError.mockRestore();
   });
 

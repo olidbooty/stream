@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventStream, formatEvent, type EventSink } from './event-stream.js';
+import { type EventSink, EventStream, formatEvent } from './event-stream.js';
 
 // Records what the stream writes; emit('close') stands in for a disconnect.
 class FakeSink extends EventEmitter implements EventSink {
@@ -24,9 +24,7 @@ describe('formatEvent', () => {
   it('writes a named event with one data line', () => {
     const data = JSON.stringify({ name: 'two\nlines' });
 
-    expect(formatEvent('torrents', data)).toBe(
-      'event: torrents\ndata: {"name":"two\\nlines"}\n\n',
-    );
+    expect(formatEvent('torrents', data)).toBe('event: torrents\ndata: {"name":"two\\nlines"}\n\n');
   });
 });
 

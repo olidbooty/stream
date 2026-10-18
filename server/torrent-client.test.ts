@@ -16,6 +16,7 @@ import {
   DEFAULT_DOWNLOAD_DIR,
   destroyTorrentClient,
   ensureDownloadDir,
+  peerTransports,
   removeTorrent,
   torrentConfig,
 } from './torrent-client.js';
@@ -27,29 +28,53 @@ const MAGNET = 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567';
 afterEach(() => FakeWebTorrent.reset());
 
 describe('torrentConfig', () => {
-  it('defaults to ./downloads and OS-assigned ports', () => {
+  it('defaults to ./downloads, fixed ports and no port mapping', () => {
     expect(torrentConfig({})).toEqual({
       downloadDir: DEFAULT_DOWNLOAD_DIR,
-      torrentPort: 0,
-      dhtPort: 0,
+      torrentPort: 6881,
+      dhtPort: 6882,
+      portMapping: false,
     });
     expect(DEFAULT_DOWNLOAD_DIR).toBe(
       resolve(import.meta.dirname, '../downloads'),
     );
   });
 
-  it('reads DOWNLOAD_DIR, TORRENT_PORT and DHT_PORT', () => {
+  it('reads DOWNLOAD_DIR, TORRENT_PORT, DHT_PORT and PORT_MAPPING', () => {
     expect(
       torrentConfig({
         DOWNLOAD_DIR: 'media',
         TORRENT_PORT: '51413',
         DHT_PORT: '51414',
+        PORT_MAPPING: '1',
       }),
     ).toEqual({
       downloadDir: resolve('media'),
       torrentPort: 51413,
       dhtPort: 51414,
+      portMapping: true,
     });
+  });
+
+  it('takes port 0 as "pick a random port"', () => {
+    expect(torrentConfig({ TORRENT_PORT: '0', DHT_PORT: '0' })).toMatchObject({
+      torrentPort: 0,
+      dhtPort: 0,
+    });
+  });
+
+  it.each([
+    ['', false],
+    ['0', false],
+    ['1', true],
+  ])('reads PORT_MAPPING=%j as %s', (value, expected) => {
+    expect(torrentConfig({ PORT_MAPPING: value }).portMapping).toBe(expected);
+  });
+
+  it.each(['yes', 'true', '2'])('rejects PORT_MAPPING=%s', (value) => {
+    expect(() => torrentConfig({ PORT_MAPPING: value })).toThrow(
+      'PORT_MAPPING must be 1 or 0',
+    );
   });
 
   it.each(['abc', '-1', '65536', '1.5'])('rejects the port %s', (port) => {
@@ -105,12 +130,57 @@ describe('ensureDownloadDir', () => {
 });
 
 describe('createTorrentClient', () => {
+  const options = {
+    torrentPort: 51413,
+    dhtPort: 51414,
+    portMapping: false,
+    webrtc: true,
+  };
+
   it('passes the ports and a WebRTC implementation to WebTorrent', () => {
-    createTorrentClient({ torrentPort: 51413, dhtPort: 51414 });
+    createTorrentClient(options);
 
     const [client] = FakeWebTorrent.instances;
     expect(client.opts).toMatchObject({ torrentPort: 51413, dhtPort: 51414 });
     expect(client.opts.tracker).toHaveProperty('wrtc.RTCPeerConnection');
+  });
+
+  it('turns off UPnP and NAT-PMP unless port mapping is on', () => {
+    createTorrentClient(options);
+    createTorrentClient({ ...options, portMapping: true });
+
+    const [off, on] = FakeWebTorrent.instances;
+    expect(off.opts).toMatchObject({ natUpnp: false, natPmp: false });
+    expect(on.opts).toMatchObject({ natUpnp: true, natPmp: true });
+  });
+
+  it('skips WebSocket trackers without WebRTC', () => {
+    createTorrentClient({ ...options, webrtc: false });
+
+    expect(FakeWebTorrent.instances[0].opts.tracker).toEqual({ wrtc: false });
+  });
+});
+
+describe('peerTransports', () => {
+  afterEach(() => {
+    FakeWebTorrent.UTP_SUPPORT = true;
+  });
+
+  it('lists what the client can use', () => {
+    expect(peerTransports(true)).toEqual([
+      'TCP',
+      'uTP',
+      'DHT',
+      'LSD',
+      'trackers',
+      'WebRTC',
+    ]);
+  });
+
+  it('leaves out uTP and WebRTC when their native modules are missing', () => {
+    FakeWebTorrent.UTP_SUPPORT = false;
+
+    expect(peerTransports(false)).toEqual(['TCP', 'DHT', 'LSD', 'trackers']);
   });
 });
 

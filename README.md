@@ -20,24 +20,59 @@ The server binds to `0.0.0.0`, so other devices on your network can open the
 LAN URLs it prints at startup. Set `HOST=127.0.0.1` to keep it local, or
 `PORT` to change the port.
 
-`npm start` also starts the WebTorrent client, which joins swarms over TCP,
-uTP, the DHT and WebRTC. It is configured with environment variables:
+`npm start` also starts the WebTorrent client, which finds peers through
+the DHT, trackers and local service discovery (LSD), and connects to them
+over TCP, uTP and WebRTC. It is configured with environment variables:
 
 | Variable       | Default       | What it sets |
 | -------------- | ------------- | ------------ |
 | `PORT`         | `3000`        | HTTP port for the app |
-| `HOST`         | `0.0.0.0`     | HTTP bind address. The peer port always listens on all interfaces |
+| `HOST`         | `0.0.0.0`     | HTTP bind address. The peer ports always listen on all interfaces |
 | `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Created at startup if missing; must be writable. Removing a torrent deletes its files |
-| `TORRENT_PORT` | `0` (random)  | TCP/uTP port for incoming peers |
-| `DHT_PORT`     | `0` (random)  | UDP port for the DHT |
+| `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
+| `DHT_PORT`     | `6882`        | UDP port for the DHT. `0` picks a random port |
+| `PORT_MAPPING` | `0`           | `1` lets the client ask your router to forward the peer port (UPnP and NAT-PMP) |
 
-The peer port is printed at startup and returned by `GET /api/client`.
-`Ctrl+C` destroys the client cleanly so it stops announcing to the swarm.
+The startup log shows the peer port, which kinds of peers the client can use
+and where downloads go. `GET /api/client` also returns the peer port.
+`Ctrl+C` destroys the client cleanly so it stops announcing to the swarm. If
+another program already uses one of the ports, the server says which and
+exits; pick other ports, or `0`.
 
-WebRTC and uTP use native modules (`node-datachannel`, `utp-native`) that
-install prebuilt binaries. On a platform without one, such as Linux on ARM,
-npm needs a C++ toolchain to build them; if `utp-native` fails, WebTorrent
-falls back to TCP only.
+### Port forwarding
+
+The client finds peers without any router setup, but peers can only connect
+to it if its ports are reachable, and many swarms have more peers that wait
+for incoming connections than ones that accept them. For the most peers,
+forward these on your router to the machine running the server:
+
+- `TORRENT_PORT` (default `6881`), **TCP and UDP**
+- `DHT_PORT` (default `6882`), **UDP**
+
+Never forward the HTTP port (`PORT`): the app has no authentication.
+
+Instead of forwarding by hand you can set `PORT_MAPPING=1`, and the client
+asks the router to forward the peer port with UPnP or NAT-PMP if the router
+allows it. It is off by default so the server never changes your router's
+settings without you asking (Decision #7).
+
+### Native modules
+
+uTP and WebRTC use native modules, `utp-native` and `node-datachannel`. npm
+installs prebuilt binaries for Linux x64, macOS and Windows; `node-datachannel`
+downloads its binary during `npm install`, so that needs network access. On
+other platforms, such as a Raspberry Pi (Linux on ARM), npm builds them from
+source, which needs a C++ toolchain and CMake:
+
+```sh
+sudo apt install build-essential cmake python3
+npm install
+```
+
+If either still fails to load, the server runs without it rather than
+stopping: without `utp-native` it connects over TCP only, and without
+`node-datachannel` it has no WebRTC peers. The startup log says which, for
+example `peers over TCP, DHT, LSD, trackers`.
 
 For frontend work, `npm run dev` starts the Vite dev server with hot reload.
 
@@ -56,6 +91,12 @@ There is no UI for torrents yet (2.5), so use the API directly:
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
 
 Errors are JSON: `{"error": "..."}`.
+
+Trackers and web seeds on `localhost` or a local IP address (`127.x`, `10.x`,
+`192.168.x` and so on) are dropped from added torrents, as is a magnet's
+`xs=` URL, so a torrent can't make the server send requests into your
+network. The server logs what it dropped. See
+[ARCHITECTURE.md](ARCHITECTURE.md#network-exposure).
 
 `hasMetadata` turns true as soon as the file list is known. `ready` follows
 once WebTorrent has also checked any data already on disk, which can take a
@@ -113,12 +154,16 @@ stay in `DOWNLOAD_DIR` (see Risks & Decisions #13).
 ```
 client/                   frontend source (Vite root)
 server/app.ts             Express app (createApp), no port binding
-server/index.ts           entry point: creates the torrent client, binds HOST/PORT
+server/index.ts           entry point: checks WebRTC can load, then runs start.ts
+server/start.ts           creates the torrent client, binds HOST/PORT
+server/peer-support.ts    runs without WebRTC when node-datachannel can't load
+server/webrtc-stub.ts     stands in for webrtc-polyfill in that case
 server/torrent-client.ts  WebTorrent client setup, config from env vars
 server/torrents-api.ts    /api/torrents routes
 server/torrent-state.ts   torrent state (connecting, noPeers, ...) and failed torrents
 server/event-stream.ts    server-sent events broadcaster
 server/magnet.ts          magnet link validation
+server/torrent-sources.ts drops trackers, web seeds and xs= URLs on local addresses
 server/media.ts           classifies a torrent's files and picks the one to play
 public/                   build output served by Express (gitignored)
 downloads/                default DOWNLOAD_DIR (gitignored)

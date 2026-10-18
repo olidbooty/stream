@@ -14,6 +14,7 @@ import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { isMagnetURI } from './magnet.js';
 import { type FileMedia, selectMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
+import { filterSources } from './torrent-sources.js';
 import {
   type TorrentState,
   TorrentWatch,
@@ -227,6 +228,15 @@ export function torrentsRouter({
         parsed = await parseTorrent(torrentId);
       } catch {
         return sendError(res, 400, 'Not a valid .torrent file');
+      }
+      // Decision #11: drop xs= and trackers or web seeds on local addresses.
+      const filtered = filterSources(parsed);
+      parsed = filtered.torrent;
+      if (filtered.dropped.length > 0) {
+        console.warn(
+          `torrent ${parsed.infoHash}: ignoring sources the server must not contact:`,
+          filtered.dropped.join(', '),
+        );
       }
 
       const existing = findTorrent(parsed.infoHash);

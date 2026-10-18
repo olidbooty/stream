@@ -75,9 +75,16 @@ The browser doesn't run WebTorrent (see [ARCHITECTURE.md](ARCHITECTURE.md)),
 so client tests stub the server's API, for example by passing in a fake
 `fetch`, rather than mocking WebTorrent.
 
-Pure functions such as `isMagnetURI()` (`server/magnet.ts`) and
-`selectMedia()` (`server/media.ts`) need no DOM or fake client at all;
-prefer them where you can.
+Pure functions such as `isMagnetURI()` (`server/magnet.ts`),
+`selectMedia()` (`server/media.ts`) and `filterSources()`
+(`server/torrent-sources.ts`) need no DOM or fake client at all; prefer them
+where you can.
+
+What happens when a native module can't load is tested in a child process,
+because module hooks and imports can't be undone inside the test run:
+`server/peer-support.test.ts` runs `node --import tsx` with a resolve hook
+that makes `node-datachannel` fail, and checks that `webtorrent` loads with
+`disableWebRTC()` and fails without it.
 
 ## Mocking WebTorrent
 
@@ -119,6 +126,8 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
 - `file.streamTo(element)` records the element in `file.streamedTo`
 - `client.simulateListening(port)` emits `listening` and makes `address()`
   return the port (it returns `null` before that and after `destroy()`)
+- `FakeWebTorrent.UTP_SUPPORT` stands for whether `utp-native` loaded; set it
+  to `false` to test the TCP-only path, and back to `true` afterwards
 
 The fake also records what the server passes in: `client.opts` (ports,
 `tracker.wrtc`), `torrent.path` from `add()`'s `path` option, and

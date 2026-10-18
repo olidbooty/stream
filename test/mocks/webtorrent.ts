@@ -206,6 +206,8 @@ export class FakeTorrent extends EventEmitter {
 
 export class FakeWebTorrent extends EventEmitter {
   static instances: FakeWebTorrent[] = [];
+  // Whether utp-native loaded. Tests can set it to false.
+  static UTP_SUPPORT = true;
 
   opts: Record<string, unknown>;
   torrents: FakeTorrent[] = [];

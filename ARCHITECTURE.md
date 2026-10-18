@@ -16,12 +16,12 @@ browser                                   Node (server/)
                                           │     remove)                   │
                                           │   /api/torrents/events (SSE)  │
                                           │   404 for everything else     │
-                                          │ WebTorrent client (index.ts)  │
+                                          │ WebTorrent client (start.ts)  │
                                           │   TCP, uTP, DHT, WebRTC       │
                                           └───────────────────────────────┘
 ```
 
-`server/index.ts` creates the client with `createTorrentClient()` from
+`server/start.ts` creates the client with `createTorrentClient()` from
 `server/torrent-client.ts` and passes it to `createApp()`. The routes in
 `server/torrents-api.ts` add torrents with `addTorrent()` and remove them with
 `removeTorrent()`, which apply Decision #4. The API is listed in the
@@ -37,7 +37,9 @@ the server**. So the API never passes user input straight to it:
    with a v1 `urn:btih:` info hash, at most 8 KiB.
 2. Magnets and uploaded `.torrent` files are parsed with `parse-torrent`, which
    gives the info hash and rejects bad files with `400`.
-3. The *parsed* object is passed to `addTorrent()`, so WebTorrent doesn't
+3. `filterSources()` drops its `xs=` URL, and trackers and web seeds on local
+   addresses (see [Network exposure](#network-exposure)).
+4. The *parsed* object is passed to `addTorrent()`, so WebTorrent doesn't
    re-interpret the input.
 
 The info hash is checked against `client.torrents` first, so adding a torrent
@@ -159,7 +161,7 @@ browsers from dropping a quiet stream. One timer serves every connection and
 runs only while one is open. It reads the list rather than listening to
 torrents, so removing a torrent leaves no listeners behind, and a client whose
 socket buffer is full is skipped until it drains, then gets the latest list.
-`server.closeAllConnections()` in `server/index.ts` ends open streams on
+`server.closeAllConnections()` in `server/start.ts` ends open streams on
 shutdown.
 
 [sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
@@ -222,35 +224,55 @@ implements this.
 import WebTorrent from 'webtorrent';
 import wrtc from 'webrtc-polyfill';
 
-const client = new WebTorrent({ torrentPort, dhtPort, tracker: { wrtc } });
+const client = new WebTorrent({
+  torrentPort, // 6881
+  dhtPort, // 6882
+  natUpnp: portMapping, // false unless PORT_MAPPING=1
+  natPmp: portMapping,
+  tracker: { wrtc },
+});
 ```
 
-- **DHT, TCP and uTP** are on by default. uTP uses the optional native
-  `utp-native` package; if it fails to install, WebTorrent falls back to TCP
-  only.
+- **DHT, LSD, TCP and uTP** are on by default. uTP uses the optional native
+  `utp-native` package; if it fails to load, WebTorrent falls back to TCP
+  only (`WebTorrent.UTP_SUPPORT` is `false`).
 - **WebRTC** uses `webrtc-polyfill` (backed by `node-datachannel`, a native
   module). In `webtorrent@3` its peer library, `@thaunknown/simple-peer`,
   already imports the polyfill, so WebRTC works even without `tracker.wrtc`.
   We still pass it and list `webrtc-polyfill` in `package.json`, so WebRTC
   doesn't rely on another package's import.
+- **Without `node-datachannel`** (Decision #10). The import chain
+  `webtorrent` → `bittorrent-tracker` → `simple-peer` → `webrtc-polyfill` →
+  `node-datachannel` is static, so if its binary is missing, importing
+  `webtorrent` throws and the server can't start. `server/index.ts` therefore
+  `require()`s `node-datachannel` first (`checkWebRTC()` in
+  `server/peer-support.ts`). If that fails, it registers a module resolve
+  hook (`module.registerHooks()`) that sends `webrtc-polyfill` to
+  `server/webrtc-stub.ts`, then imports the rest of the server from
+  `server/start.ts`. The hook has to be in place before anything imports
+  `webtorrent`, because modules are resolved before any code runs. With the
+  stub, simple-peer finds no `RTCPeerConnection`, and the client gets
+  `tracker: { wrtc: false }`, so WebSocket trackers (which only find WebRTC
+  peers) are skipped. The startup log lists what the client can use.
 - `client.on('listening')` fires once it is bound; `client.address()` gives
-  the peer port. Set it with `TORRENT_PORT` and `DHT_PORT` (both default to
-  `0`, a random port) so it can be forwarded on the router. Without incoming
-  connections the client still works, but finds fewer peers.
-- The peer port binds to `0.0.0.0` whatever `HOST` says. `HOST` only
+  the peer port. `TORRENT_PORT` (TCP and uTP) and `DHT_PORT` (UDP) default
+  to `6881` and `6882`, fixed so they can be forwarded on the router; `0`
+  picks a random port. Without incoming connections the client still works,
+  but finds fewer peers.
+- The peer ports bind to `0.0.0.0` whatever `HOST` says. `HOST` only
   restricts the HTTP port (Risks & Decisions #8).
-- **UPnP and NAT-PMP are on by default**: once listening, the client asks the
-  router to forward the peer port, without any setting from us. Whether to
-  keep that is open until 2.6 (Risks & Decisions #7).
-- A peer port that is already in use makes the constructor emit `error`;
-  `server/index.ts` logs it and exits with status 1.
+- **UPnP and NAT-PMP are on by default in WebTorrent**: once listening, the
+  client would ask the router to forward the peer port. Decision #7 turns
+  them off unless `PORT_MAPPING=1` is set.
+- A port that is already in use makes the constructor emit `error`;
+  `server/start.ts` logs which port and exits with status 1.
 - A torrent's own errors (a bad store, invalid metadata) are re-emitted on
   the client when the torrent has no `error` listener, which would stop the
   server. `addTorrent()` always adds one, so a failing torrent only logs.
 - Destroy the client on `SIGINT`/`SIGTERM` so it stops announcing and closes
-  its sockets. `server/index.ts` does this; a second signal exits at once.
+  its sockets. `server/start.ts` does this; a second signal exits at once.
 - `client.get()` and `client.remove()` are async. `remove()` rejects for an
-  unknown torrent but reports the destroy itself through its callback, so
+  unknown torrent but reports the destroy through its callback, so
   `removeTorrent()` waits for both.
 
 Pass the client into `createApp()` rather than creating it there, so tests
@@ -306,15 +328,34 @@ to keep it to one machine. Never expose the HTTP port to the internet. Only
 the peer port should be forwarded.
 
 The peer port (`TORRENT_PORT`, TCP and uTP) and `DHT_PORT` always listen on
-all interfaces, and with UPnP/NAT-PMP on, WebTorrent may forward the peer port
-on the router by itself (Decisions #7 and #8).
+all interfaces (Decision #8). WebTorrent would also ask the router to forward
+the peer port with UPnP/NAT-PMP; that is off unless `PORT_MAPPING=1`
+(Decision #7).
 
 `/api/torrents` has no authentication (Decision #12). A torrent also makes
 the server contact hosts its adder chose: trackers (`tr=`, `announce`), web
-seeds (`ws=`, `url-list`) and a magnet's `xs=` URL, which WebTorrent fetches
-over HTTP to get metadata. Someone on the LAN could use that to make the
-server send requests to other hosts, including ones on the LAN
-(Decision #11).
+seeds (`ws=`, `as=`, `url-list`) and a magnet's `xs=` URL, which WebTorrent
+fetches over HTTP to get metadata. Someone on the LAN could use that to make
+the server send requests to other hosts, including ones on the LAN, so
+`filterSources()` (`server/torrent-sources.ts`) cleans every parsed torrent
+before `client.add()` (Decision #11):
+
+- `xs=` is removed. Peers send the metadata anyway.
+- Trackers must be `http`, `https`, `udp` or `wss` URLs, and web seeds `http`
+  or `https`.
+- Either is dropped if its host is `localhost` (or `*.localhost`) or a
+  literal loopback, private, link-local or unspecified address, IPv4 or IPv6,
+  including IPv4-mapped IPv6 and spellings such as `0x7f.1` or `2130706433`.
+  `udp:` URLs are re-parsed as `http:` to get WHATWG URL's IPv4
+  normalisation, which only applies to special schemes, because the system
+  resolver would still read `0x7f.1` as `127.0.0.1`.
+- What was dropped is logged.
+
+Only literal addresses are caught. A hostname that resolves to a LAN
+address, or a public URL that redirects to one, still passes; that is
+accepted, as is the unauthenticated API. A magnet's `x.pe=` peer addresses
+are kept: they let the adder make the server open a BitTorrent connection to
+a host, which anyone can already do by announcing that address to the DHT.
 
 ## Decisions
 

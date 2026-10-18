@@ -59,7 +59,10 @@ const MAIN_MIN_FRACTION = 1 / 3;
 
 // Numeric-aware, so "Episode 2" sorts before "Episode 10". A fixed locale keeps
 // the order the same on every server.
-const pathOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+const pathOrder = new Intl.Collator('en', {
+  numeric: true,
+  sensitivity: 'base',
+});
 
 export interface MediaFileInput {
   index: number;
@@ -106,15 +109,22 @@ function isVideo(media: MediaKind): boolean {
 // play, or else the first that may not. So a film's .mp4 encode wins over its
 // .mkv one, a season starts at episode 1, and a short .mp4 trailer never
 // beats a full-length .mkv.
-export function selectMedia<F extends MediaFileInput>(files: readonly F[]): MediaSelection<F> {
-  const classified = files.map((file) => ({ ...file, media: mediaKind(file.name), sample: false }));
+export function selectMedia<F extends MediaFileInput>(
+  files: readonly F[],
+): MediaSelection<F> {
+  const classified = files.map((file) => ({
+    ...file,
+    media: mediaKind(file.name),
+    sample: false,
+  }));
   const videos = classified.filter((file) => isVideo(file.media));
   // reduce rather than Math.max(...): a torrent can hold more files than a
   // call can take arguments.
   const largest = videos.reduce((max, file) => Math.max(max, file.length), 0);
 
   for (const video of videos) {
-    video.sample = SAMPLE.test(video.path) && video.length < largest * SAMPLE_MAX_FRACTION;
+    video.sample =
+      SAMPLE.test(video.path) && video.length < largest * SAMPLE_MAX_FRACTION;
   }
 
   // 0: main-sized, 1: smaller (extras), 2: sample. A sample is under
@@ -122,10 +132,14 @@ export function selectMedia<F extends MediaFileInput>(files: readonly F[]): Medi
   const group = (file: FileMedia & MediaFileInput): number =>
     file.sample ? 2 : file.length >= largest * MAIN_MIN_FRACTION ? 0 : 1;
   const ordered = videos.toSorted(
-    (a, b) => group(a) - group(b) || pathOrder.compare(a.path, b.path) || a.index - b.index,
+    (a, b) =>
+      group(a) - group(b) ||
+      pathOrder.compare(a.path, b.path) ||
+      a.index - b.index,
   );
   const candidates = ordered.filter((file) => group(file) === 0);
-  const main = candidates.find((file) => file.media === 'video') ?? candidates[0];
+  const main =
+    candidates.find((file) => file.media === 'video') ?? candidates[0];
 
   return {
     files: classified,

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventStream, formatEvent, type EventSink } from './event-stream.js';
+import { type EventSink, EventStream, formatEvent } from './event-stream.js';
 
 // Records what the stream writes; emit('close') stands in for a disconnect.
 class FakeSink extends EventEmitter implements EventSink {
@@ -37,7 +37,10 @@ describe('EventStream', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     state = { progress: 0 };
-    stream = new EventStream('torrents', () => state, { intervalMs: 1000, keepAliveMs: 15_000 });
+    stream = new EventStream('torrents', () => state, {
+      intervalMs: 1000,
+      keepAliveMs: 15_000,
+    });
   });
 
   afterEach(() => {
@@ -73,7 +76,10 @@ describe('EventStream', () => {
     expect(sink.chunks).toHaveLength(1);
 
     vi.advanceTimersByTime(1000);
-    expect(sink.chunks).toEqual([formatEvent('torrents', '{"progress":0}'), ': keep-alive\n\n']);
+    expect(sink.chunks).toEqual([
+      formatEvent('torrents', '{"progress":0}'),
+      ': keep-alive\n\n',
+    ]);
   });
 
   it('gives each subscriber what changed since it last heard', () => {

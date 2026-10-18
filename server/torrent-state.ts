@@ -4,7 +4,12 @@ import type { TorrentSummary } from './torrents-api.js';
 
 // What the UI shows for a torrent. `noPeers` is Decision #15: no peer is
 // connected and WebTorrent's own check has found none since the last one left.
-export type TorrentState = 'connecting' | 'downloading' | 'seeding' | 'noPeers' | 'error';
+export type TorrentState =
+  | 'connecting'
+  | 'downloading'
+  | 'seeding'
+  | 'noPeers'
+  | 'error';
 
 export interface TorrentStateInput {
   // WebTorrent hit an error and destroyed the torrent.
@@ -56,7 +61,11 @@ export class TorrentWatch {
   // `snapshot` gives the torrent's summary when it fails, while its name and
   // progress are still readable. A new torrent replaces an earlier failure of
   // the same info hash, so adding it again is how the user retries.
-  watch(torrent: Torrent, infoHash: string, snapshot: () => TorrentSummary): void {
+  watch(
+    torrent: Torrent,
+    infoHash: string,
+    snapshot: () => TorrentSummary,
+  ): void {
     this.failures.delete(infoHash);
 
     // WebTorrent checks every 30 seconds and emits once per discovery source
@@ -71,7 +80,8 @@ export class TorrentWatch {
       // Adding a torrent twice at the same instant makes WebTorrent destroy one
       // of them (not always the later one). The other is still running, so
       // that isn't a failure.
-      if (this.client.torrents.some((other) => other.infoHash === infoHash)) return;
+      if (this.client.torrents.some((other) => other.infoHash === infoHash))
+        return;
       this.failures.set(infoHash, {
         ...snapshot(),
         infoHash,

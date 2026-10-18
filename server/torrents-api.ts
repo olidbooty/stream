@@ -1,12 +1,24 @@
-import express, { Router, type ErrorRequestHandler, type Request, type Response } from 'express';
-import parseTorrent, { toMagnetURI, type Instance as ParsedTorrent } from 'parse-torrent';
+import express, {
+  type ErrorRequestHandler,
+  type Request,
+  type Response,
+  Router,
+} from 'express';
+import parseTorrent, {
+  type Instance as ParsedTorrent,
+  toMagnetURI,
+} from 'parse-torrent';
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
 import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { isMagnetURI } from './magnet.js';
-import { selectMedia, type FileMedia } from './media.js';
+import { type FileMedia, selectMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
-import { TorrentWatch, torrentState, type TorrentState } from './torrent-state.js';
+import {
+  type TorrentState,
+  TorrentWatch,
+  torrentState,
+} from './torrent-state.js';
 
 // A .torrent file holds 20 bytes per piece, so even a 100 GB torrent with
 // 256 KiB pieces needs about 8 MB. Most are well under 1 MB.
@@ -71,7 +83,11 @@ function hasMetadata(torrent: Torrent): boolean {
 
 // Right after add() the real client hasn't parsed the torrent yet, so the
 // caller passes the parsed torrent it already has.
-function summarize(torrent: Torrent, watch: TorrentWatch, parsed?: ParsedTorrent): TorrentSummary {
+function summarize(
+  torrent: Torrent,
+  watch: TorrentWatch,
+  parsed?: ParsedTorrent,
+): TorrentSummary {
   return {
     infoHash: torrent.infoHash || (parsed?.infoHash ?? ''),
     name: torrent.name || parsed?.name || null,
@@ -96,7 +112,12 @@ function summarize(torrent: Torrent, watch: TorrentWatch, parsed?: ParsedTorrent
 
 function describe(torrent: Torrent, watch: TorrentWatch): TorrentDetail {
   if (!hasMetadata(torrent)) {
-    return { ...summarize(torrent, watch), files: null, mainFile: null, videos: null };
+    return {
+      ...summarize(torrent, watch),
+      files: null,
+      mainFile: null,
+      videos: null,
+    };
   }
   const { files, mainFile, videos } = selectMedia(
     torrent.files.map((file, index) => ({
@@ -109,11 +130,19 @@ function describe(torrent: Torrent, watch: TorrentWatch): TorrentDetail {
   return { ...summarize(torrent, watch), files, mainFile, videos };
 }
 
-function sendError(res: Response, status: number, error: string, extra: object = {}): void {
+function sendError(
+  res: Response,
+  status: number,
+  error: string,
+  extra: object = {},
+): void {
   res.status(status).json({ error, ...extra });
 }
 
-export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): Router {
+export function torrentsRouter({
+  client,
+  downloadDir,
+}: TorrentsRouterOptions): Router {
   const router = Router();
   const watch = new TorrentWatch(client);
 
@@ -146,14 +175,14 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
 
   const events = new EventStream('torrents', list);
 
-  router.get('/', (req, res) => {
+  router.get('/', (_req, res) => {
     res.json(list());
   });
 
   // Server-sent events: the same list as GET /, sent at once and then
   // whenever it changes, checked once a second. Registered before /:infoHash,
   // which would answer 400 for "events".
-  router.get('/events', (req, res) => {
+  router.get('/events', (_req, res) => {
     res.writeHead(200, SSE_HEADERS);
     res.flushHeaders();
     events.subscribe(res);
@@ -164,7 +193,10 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
   router.post(
     '/',
     express.json(),
-    express.raw({ type: 'application/x-bittorrent', limit: MAX_TORRENT_FILE_BYTES }),
+    express.raw({
+      type: 'application/x-bittorrent',
+      limit: MAX_TORRENT_FILE_BYTES,
+    }),
     async (req, res) => {
       let torrentId: string | Uint8Array;
       if (req.is('application/x-bittorrent')) {
@@ -175,7 +207,11 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
       } else if (req.is('application/json')) {
         const magnet: unknown = req.body?.magnet;
         if (!isMagnetURI(magnet)) {
-          return sendError(res, 400, 'magnet must be a magnet: link with a BitTorrent info hash');
+          return sendError(
+            res,
+            400,
+            'magnet must be a magnet: link with a BitTorrent info hash',
+          );
         }
         torrentId = magnet;
       } else {
@@ -202,7 +238,9 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
 
       // Hand over the parsed torrent so WebTorrent never re-reads the input.
       const torrent = addTorrent(client, parsed, downloadDir);
-      watch.watch(torrent, parsed.infoHash, () => summarize(torrent, watch, parsed));
+      watch.watch(torrent, parsed.infoHash, () =>
+        summarize(torrent, watch, parsed),
+      );
       res
         .status(201)
         .location(`${req.baseUrl}/${parsed.infoHash}`)
@@ -217,7 +255,12 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
     const found = torrentFromParams(req, res);
     if (found?.torrent) res.json(describe(found.torrent, watch));
     else if (found?.failed) {
-      res.json({ ...found.failed, files: null, mainFile: null, videos: null } satisfies TorrentDetail);
+      res.json({
+        ...found.failed,
+        files: null,
+        mainFile: null,
+        videos: null,
+      } satisfies TorrentDetail);
     }
   });
 
@@ -231,10 +274,14 @@ export function torrentsRouter({ client, downloadDir }: TorrentsRouterOptions): 
 
   // Body parser errors carry a status: 413 for an oversized .torrent file,
   // 400 for malformed JSON. Anything else is ours.
-  const onError: ErrorRequestHandler = (err, req, res, next) => {
+  const onError: ErrorRequestHandler = (err, _req, res, next) => {
     if (res.headersSent) return next(err);
     if (err?.type === 'entity.too.large') {
-      return sendError(res, 413, `The .torrent file is larger than ${MAX_TORRENT_FILE_BYTES} bytes`);
+      return sendError(
+        res,
+        413,
+        `The .torrent file is larger than ${MAX_TORRENT_FILE_BYTES} bytes`,
+      );
     }
     if (err?.type === 'entity.parse.failed') {
       return sendError(res, 400, 'The request body is not valid JSON');

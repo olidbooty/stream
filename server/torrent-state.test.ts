@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
-import { FakeWebTorrent, type FakeTorrent } from '../test/mocks/webtorrent.js';
+import { type FakeTorrent, FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import {
   MAX_FAILED_TORRENTS,
-  TorrentWatch,
-  torrentState,
   type TorrentState,
   type TorrentStateInput,
+  TorrentWatch,
+  torrentState,
 } from './torrent-state.js';
 import type { TorrentSummary } from './torrents-api.js';
 
@@ -24,24 +24,48 @@ describe('torrentState', () => {
 
   it.each<[string, TorrentState, Partial<TorrentStateInput>]>([
     ['a new magnet link', 'connecting', {}],
-    ['a magnet link with peers but no metadata yet', 'connecting', { numPeers: 2 }],
-    ['a torrent with metadata still looking for peers', 'connecting', { hasMetadata: true }],
-    ['a torrent with metadata and peers', 'downloading', { hasMetadata: true, numPeers: 2 }],
+    [
+      'a magnet link with peers but no metadata yet',
+      'connecting',
+      { numPeers: 2 },
+    ],
+    [
+      'a torrent with metadata still looking for peers',
+      'connecting',
+      { hasMetadata: true },
+    ],
+    [
+      'a torrent with metadata and peers',
+      'downloading',
+      { hasMetadata: true, numPeers: 2 },
+    ],
     ['a magnet link nobody has answered', 'noPeers', { noPeersReported: true }],
-    ['a download whose peers all left', 'noPeers', { hasMetadata: true, noPeersReported: true }],
+    [
+      'a download whose peers all left',
+      'noPeers',
+      { hasMetadata: true, noPeersReported: true },
+    ],
     // The flag is only cleared when a peer connects; peers win regardless.
     [
       'peers connected despite an old noPeers',
       'downloading',
       { hasMetadata: true, numPeers: 1, noPeersReported: true },
     ],
-    ['a finished torrent', 'seeding', { hasMetadata: true, done: true, numPeers: 3 }],
+    [
+      'a finished torrent',
+      'seeding',
+      { hasMetadata: true, done: true, numPeers: 3 },
+    ],
     [
       'a finished torrent with no peers',
       'seeding',
       { hasMetadata: true, done: true, noPeersReported: true },
     ],
-    ['a failed torrent', 'error', { failed: true, hasMetadata: true, done: true }],
+    [
+      'a failed torrent',
+      'error',
+      { failed: true, hasMetadata: true, done: true },
+    ],
   ])('reports %s as %s', (_label, expected, input) => {
     expect(torrentState({ ...base, ...input })).toBe(expected);
   });
@@ -78,7 +102,8 @@ describe('TorrentWatch', () => {
     return torrent;
   }
 
-  const noPeers = (torrent: FakeTorrent) => watch.noPeersReported(torrent as unknown as Torrent);
+  const noPeers = (torrent: FakeTorrent) =>
+    watch.noPeersReported(torrent as unknown as Torrent);
 
   it('reports noPeers until a peer connects', () => {
     const torrent = add();
@@ -93,7 +118,10 @@ describe('TorrentWatch', () => {
   describe('failures', () => {
     it('keeps a failed torrent with its last progress and the error', () => {
       const torrent = add();
-      torrent.simulateMetadata({ name: 'Sintel', files: [{ name: 'sintel.mp4', length: 1000 }] });
+      torrent.simulateMetadata({
+        name: 'Sintel',
+        files: [{ name: 'sintel.mp4', length: 1000 }],
+      });
       torrent.simulateDownload(400, { downloadSpeed: 100, numPeers: 2 });
 
       torrent.simulateError(new Error('disk full'));
@@ -143,7 +171,9 @@ describe('TorrentWatch', () => {
       add();
       const duplicate = add();
 
-      duplicate.simulateError(new Error(`Cannot add duplicate torrent ${HASH}`));
+      duplicate.simulateError(
+        new Error(`Cannot add duplicate torrent ${HASH}`),
+      );
 
       expect(client.torrents).toHaveLength(1);
       expect(watch.failed()).toEqual([]);

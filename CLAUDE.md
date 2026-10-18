@@ -7,4 +7,4 @@ Browser video streaming from torrents with WebTorrent. Read these before changin
 - [TESTING.md](TESTING.md): test layout, the WebTorrent fake, manual browser checks
 - [PROJECT_MANAGEMENT.md](PROJECT_MANAGEMENT.md): steps, commit prefixes, PR checklist, decisions
 
-Before pushing, run `npm run typecheck`, `npm test` and `npm run build`. There is no CI.
+Before pushing, run `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`. There is no CI.

@@ -10,7 +10,11 @@ const DEFAULT_INFO_HASH = '0123456789abcdef0123456789abcdef01234567';
 // Like the real client, take the info hash from a parsed torrent or a hex
 // magnet link. Anything else (a .torrent buffer) gets the default.
 function infoHashOf(torrentId: unknown): string | undefined {
-  if (typeof torrentId === 'object' && torrentId !== null && 'infoHash' in torrentId) {
+  if (
+    typeof torrentId === 'object' &&
+    torrentId !== null &&
+    'infoHash' in torrentId
+  ) {
     return String(torrentId.infoHash).toLowerCase();
   }
   if (typeof torrentId === 'string') {
@@ -110,7 +114,10 @@ export class FakeTorrent extends EventEmitter {
     this.infoHash = infoHash;
     this.path = path;
     this.destroyStoreOnDestroy = destroyStoreOnDestroy;
-    this.magnetURI = typeof torrentId === 'string' ? torrentId : `magnet:?xt=urn:btih:${infoHash}`;
+    this.magnetURI =
+      typeof torrentId === 'string'
+        ? torrentId
+        : `magnet:?xt=urn:btih:${infoHash}`;
   }
 
   // Metadata arrives: files become known and, unless `ready: false`, the
@@ -120,9 +127,15 @@ export class FakeTorrent extends EventEmitter {
     name = 'fixture',
     files = [],
     ready = true,
-  }: { name?: string; files?: (FakeFile | FakeFileOptions)[]; ready?: boolean } = {}): void {
+  }: {
+    name?: string;
+    files?: (FakeFile | FakeFileOptions)[];
+    ready?: boolean;
+  } = {}): void {
     this.name = name;
-    this.files = files.map((file) => (file instanceof FakeFile ? file : new FakeFile(file)));
+    this.files = files.map((file) =>
+      file instanceof FakeFile ? file : new FakeFile(file),
+    );
     this.length = this.files.reduce((total, file) => total + file.length, 0);
     this.metadata = new Uint8Array(0);
     this.emit('metadata');
@@ -136,7 +149,10 @@ export class FakeTorrent extends EventEmitter {
 
   simulateDownload(
     bytes: number,
-    { downloadSpeed = bytes, numPeers = this.numPeers }: { downloadSpeed?: number; numPeers?: number } = {},
+    {
+      downloadSpeed = bytes,
+      numPeers = this.numPeers,
+    }: { downloadSpeed?: number; numPeers?: number } = {},
   ): void {
     this.downloaded = Math.min(this.length, this.downloaded + bytes);
     this.downloadSpeed = downloadSpeed;
@@ -171,7 +187,8 @@ export class FakeTorrent extends EventEmitter {
     client?.detach(this);
     this.destroyed = true;
     this.storeDestroyed = this.destroyStoreOnDestroy;
-    if (this.listenerCount('error') === 0 && client) client.emit('error', error);
+    if (this.listenerCount('error') === 0 && client)
+      client.emit('error', error);
     else this.emit('error', error);
     this.emit('close');
   }
@@ -206,7 +223,9 @@ export class FakeWebTorrent extends EventEmitter {
   }
 
   address(): { address: string; family: string; port: number } | null {
-    return this.listening ? { address: '0.0.0.0', family: 'IPv4', port: this.torrentPort } : null;
+    return this.listening
+      ? { address: '0.0.0.0', family: 'IPv4', port: this.torrentPort }
+      : null;
   }
 
   // The real client emits 'listening' once its peer port is bound. Port 0 means
@@ -218,16 +237,28 @@ export class FakeWebTorrent extends EventEmitter {
   }
 
   get downloadSpeed(): number {
-    return this.torrents.reduce((total, torrent) => total + torrent.downloadSpeed, 0);
+    return this.torrents.reduce(
+      (total, torrent) => total + torrent.downloadSpeed,
+      0,
+    );
   }
 
   get uploadSpeed(): number {
-    return this.torrents.reduce((total, torrent) => total + torrent.uploadSpeed, 0);
+    return this.torrents.reduce(
+      (total, torrent) => total + torrent.uploadSpeed,
+      0,
+    );
   }
 
   get progress(): number {
-    const length = this.torrents.reduce((total, torrent) => total + torrent.length, 0);
-    const downloaded = this.torrents.reduce((total, torrent) => total + torrent.downloaded, 0);
+    const length = this.torrents.reduce(
+      (total, torrent) => total + torrent.length,
+      0,
+    );
+    const downloaded = this.torrents.reduce(
+      (total, torrent) => total + torrent.downloaded,
+      0,
+    );
     return length ? downloaded / length : 0;
   }
 
@@ -254,10 +285,14 @@ export class FakeWebTorrent extends EventEmitter {
   }
 
   private find(torrentId: unknown): FakeTorrent | null {
-    return this.torrents.find(
-      (torrent) =>
-        torrent === torrentId || torrent.infoHash === torrentId || torrent.magnetURI === torrentId,
-    ) ?? null;
+    return (
+      this.torrents.find(
+        (torrent) =>
+          torrent === torrentId ||
+          torrent.infoHash === torrentId ||
+          torrent.magnetURI === torrentId,
+      ) ?? null
+    );
   }
 
   // Rejects for an unknown torrent; reports the destroy through the callback.

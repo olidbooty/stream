@@ -1,6 +1,7 @@
+import { buffer } from 'node:stream/consumers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebTorrent from 'webtorrent';
-import { FakeWebTorrent } from './webtorrent.js';
+import { FakeWebTorrent, fakeFileBytes } from './webtorrent.js';
 
 // The pattern app tests should follow: swap the real module for the fake.
 vi.mock('webtorrent', () => import('./webtorrent.js'));
@@ -211,5 +212,45 @@ describe('WebTorrent mock', () => {
     torrent.files[0].streamTo(video);
 
     expect(torrent.files[0].streamedTo).toBe(video);
+  });
+
+  it('streams a byte range of a file and records it', async () => {
+    const torrent = createClient().add(MAGNET);
+    torrent.simulateMetadata({
+      files: [{ name: 'bunny.mp4', length: 100_000 }],
+    });
+    const file = torrent.files[0];
+
+    const bytes = await buffer(file.createReadStream({ start: 10, end: 19 }));
+
+    expect(file.type).toBe('video/mp4');
+    expect(bytes).toEqual(fakeFileBytes(10, 20));
+    expect(file.readStreams).toMatchObject([{ start: 10, end: 19 }]);
+  });
+
+  it('reads to the end for end: 0, like the real file', async () => {
+    const torrent = createClient().add(MAGNET);
+    torrent.simulateMetadata({ files: [{ name: 'bunny.mp4', length: 300 }] });
+
+    const bytes = await buffer(
+      torrent.files[0].createReadStream({ start: 0, end: 0 }),
+    );
+
+    expect(bytes).toHaveLength(300);
+  });
+
+  it('waits past the available bytes until destroyed', async () => {
+    const torrent = createClient().add(MAGNET);
+    torrent.simulateMetadata({
+      files: [{ name: 'bunny.mp4', length: 300, available: 100 }],
+    });
+    const stream = torrent.files[0].createReadStream();
+    const chunks: Buffer[] = [];
+    stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    await vi.waitFor(() => expect(Buffer.concat(chunks)).toHaveLength(100));
+    expect(stream.readableEnded).toBe(false);
+    stream.destroy();
+    expect(stream.destroyed).toBe(true);
   });
 });

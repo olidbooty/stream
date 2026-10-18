@@ -11,6 +11,7 @@ import parseTorrent, {
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
 import { EventStream, SSE_HEADERS } from './event-stream.js';
+import { streamFile } from './file-stream.js';
 import { isMagnetURI } from './magnet.js';
 import { type FileMedia, selectMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
@@ -25,6 +26,7 @@ import {
 export const MAX_TORRENT_FILE_BYTES = 10 * 1024 * 1024;
 
 const INFO_HASH = /^[0-9a-f]{40}$/i;
+const FILE_INDEX = /^(0|[1-9][0-9]{0,8})$/;
 
 export interface TorrentsRouterOptions {
   client: WebTorrent;
@@ -262,6 +264,32 @@ export function torrentsRouter({
         videos: null,
       } satisfies TorrentDetail);
     }
+  });
+
+  // The file's bytes, for a <video src>. Answers Range requests with 206, so
+  // the browser can start and seek before the download is done. Express also
+  // routes HEAD here.
+  router.get('/:infoHash/files/:index/stream', (req, res) => {
+    const found = torrentFromParams(req, res);
+    if (!found) return;
+    if (found.failed) {
+      return sendError(res, 409, 'This torrent failed; add it again to retry');
+    }
+    const torrent = found.torrent as Torrent;
+    if (!hasMetadata(torrent)) {
+      return sendError(
+        res,
+        409,
+        'The file list is still being fetched from peers',
+      );
+    }
+    const index = String(req.params.index);
+    if (!FILE_INDEX.test(index)) {
+      return sendError(res, 400, 'index must be a whole number');
+    }
+    const file = torrent.files[Number(index)];
+    if (!file) return sendError(res, 404, 'No file with that index');
+    streamFile(req, res, file);
   });
 
   router.delete('/:infoHash', async (req, res) => {

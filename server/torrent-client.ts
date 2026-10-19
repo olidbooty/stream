@@ -5,24 +5,36 @@ import { fileURLToPath } from 'node:url';
 import type { Instance as ParsedTorrent } from 'parse-torrent';
 import wrtc from 'webrtc-polyfill';
 import WebTorrent, { type Torrent } from 'webtorrent';
+import { repairPeerAddress } from './peer-address.js';
 
 export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(
   new URL('../downloads', import.meta.url),
 );
 
+// Fixed, so the router can forward them. TCP and uTP (UDP) share the torrent
+// port; the DHT needs a UDP port of its own.
+export const DEFAULT_TORRENT_PORT = 6881;
+export const DEFAULT_DHT_PORT = 6882;
+
 export interface TorrentConfig {
   downloadDir: string;
-  // 0 lets the OS pick a free port; 2.6 settles on fixed defaults for port forwarding.
+  // 0 lets the OS pick a free port.
   torrentPort: number;
   dhtPort: number;
+  // Decision #7: ask the router to forward the peer port (UPnP and NAT-PMP).
+  portMapping: boolean;
 }
 
 export type TorrentEnv = Partial<
-  Record<'DOWNLOAD_DIR' | 'TORRENT_PORT' | 'DHT_PORT', string>
+  Record<'DOWNLOAD_DIR' | 'TORRENT_PORT' | 'DHT_PORT' | 'PORT_MAPPING', string>
 >;
 
-function parsePort(name: string, value: string | undefined): number {
-  if (value === undefined || value === '') return 0;
+function parsePort(
+  name: string,
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (value === undefined || value === '') return fallback;
   const port = Number(value);
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(
@@ -37,9 +49,20 @@ export function torrentConfig(env: TorrentEnv = process.env): TorrentConfig {
     downloadDir: env.DOWNLOAD_DIR
       ? resolve(env.DOWNLOAD_DIR)
       : DEFAULT_DOWNLOAD_DIR,
-    torrentPort: parsePort('TORRENT_PORT', env.TORRENT_PORT),
-    dhtPort: parsePort('DHT_PORT', env.DHT_PORT),
+    torrentPort: parsePort(
+      'TORRENT_PORT',
+      env.TORRENT_PORT,
+      DEFAULT_TORRENT_PORT,
+    ),
+    dhtPort: parsePort('DHT_PORT', env.DHT_PORT, DEFAULT_DHT_PORT),
+    portMapping: parseSwitch('PORT_MAPPING', env.PORT_MAPPING),
   };
+}
+
+function parseSwitch(name: string, value: string | undefined): boolean {
+  if (value === undefined || value === '' || value === '0') return false;
+  if (value === '1') return true;
+  throw new Error(`${name} must be 1 or 0, got "${value}"`);
 }
 
 // Fail at startup with a clear message rather than when the first torrent writes.
@@ -54,13 +77,43 @@ export async function ensureDownloadDir(downloadDir: string): Promise<void> {
   }
 }
 
-// DHT, TCP and uTP are on by default. webtorrent@3 already loads webrtc-polyfill
-// through simple-peer; passing it explicitly keeps WebRTC from depending on that.
+export interface PeerOptions
+  extends Pick<TorrentConfig, 'torrentPort' | 'dhtPort' | 'portMapping'> {
+  // False when node-datachannel can't load (server/peer-support.ts).
+  webrtc: boolean;
+}
+
+// DHT, LSD, TCP and uTP are on by default. webtorrent@3 already loads
+// webrtc-polyfill through simple-peer; passing it explicitly keeps WebRTC from
+// depending on that. wrtc: false skips WebSocket trackers, which only find
+// WebRTC peers. UPnP and NAT-PMP are on by default in WebTorrent, so they are
+// switched off unless asked for (Decision #7).
 export function createTorrentClient({
   torrentPort,
   dhtPort,
-}: Pick<TorrentConfig, 'torrentPort' | 'dhtPort'>): WebTorrent {
-  return new WebTorrent({ torrentPort, dhtPort, tracker: { wrtc } });
+  portMapping,
+  webrtc,
+}: PeerOptions): WebTorrent {
+  return new WebTorrent({
+    torrentPort,
+    dhtPort,
+    natUpnp: portMapping,
+    natPmp: portMapping,
+    tracker: { wrtc: webrtc ? wrtc : false },
+  });
+}
+
+// What the client can use, for the startup log. WebTorrent falls back to TCP
+// by itself when utp-native is missing.
+export function peerTransports(webrtc: boolean): string[] {
+  return [
+    'TCP',
+    ...(WebTorrent.UTP_SUPPORT ? ['uTP'] : []),
+    'DHT',
+    'LSD',
+    'trackers',
+    ...(webrtc ? ['WebRTC'] : []),
+  ];
 }
 
 // Decision #4: files go in DOWNLOAD_DIR and are deleted when the torrent is removed.
@@ -75,6 +128,11 @@ export function addTorrent(
     path: downloadDir,
     destroyStoreOnDestroy: true,
   });
+  // Trackers, the DHT and PEX all hand peers to torrent.addPeer(); repair the
+  // addresses bittorrent-tracker garbles before WebTorrent tries them.
+  const addPeer = torrent.addPeer.bind(torrent);
+  torrent.addPeer = (peer, source) =>
+    addPeer(typeof peer === 'string' ? repairPeerAddress(peer) : peer, source);
   // A torrent error with no listener is re-emitted on the client, which the
   // server treats as fatal. One bad torrent must not stop the others.
   torrent.on('error', (err) => {

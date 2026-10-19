@@ -245,6 +245,15 @@ export class FakeTorrent extends EventEmitter {
     this.emit('noPeers', announceType);
   }
 
+  // Addresses (or WebRTC peers) passed to addPeer(), as discovery would.
+  addedPeers: unknown[] = [];
+
+  addPeer(peer: unknown, _source?: string): boolean {
+    this.addedPeers.push(peer);
+    this.emit('peer', peer);
+    return true;
+  }
+
   // A peer connects: numPeers counts connected wires, as in the real client.
   simulateWire(): void {
     this.numPeers += 1;
@@ -279,6 +288,8 @@ export class FakeTorrent extends EventEmitter {
 
 export class FakeWebTorrent extends EventEmitter {
   static instances: FakeWebTorrent[] = [];
+  // Whether utp-native loaded. Tests can set it to false.
+  static UTP_SUPPORT = true;
 
   opts: Record<string, unknown>;
   torrents: FakeTorrent[] = [];

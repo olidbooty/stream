@@ -26,14 +26,19 @@ const MAGNET = `magnet:?xt=urn:btih:${HASH}&dn=Sintel`;
 const DOWNLOAD_DIR = '/srv/downloads';
 
 // A minimal single-file .torrent. Its info hash is the SHA-1 of the info dict.
-function torrentFile(name = 'bunny.mp4'): Buffer {
+function torrentFile(
+  name = 'bunny.mp4',
+  sources: { announce?: string[]; urlList?: string[] } = {},
+): Buffer {
   const info = {
     name,
     length: 1000,
     'piece length': 16384,
     pieces: new Uint8Array(20),
   };
-  return Buffer.from(toTorrentFile({ info } as unknown as ParsedTorrent));
+  return Buffer.from(
+    toTorrentFile({ info, ...sources } as unknown as ParsedTorrent),
+  );
 }
 
 describe('/api/torrents', () => {
@@ -77,6 +82,28 @@ describe('/api/torrents', () => {
         path: DOWNLOAD_DIR,
         destroyStoreOnDestroy: true,
       });
+    });
+
+    it('drops xs= and trackers and web seeds on local addresses', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const magnet =
+        `${MAGNET}&tr=udp%3A%2F%2Ftracker.example.com%3A1337` +
+        '&tr=http%3A%2F%2F192.168.1.1%2Fannounce' +
+        '&ws=http%3A%2F%2Flocalhost%3A3000%2F' +
+        '&xs=http%3A%2F%2F10.0.0.5%2Fx.torrent';
+
+      const res = await request(app).post('/api/torrents').send({ magnet });
+
+      expect(res.status).toBe(201);
+      const added = client.torrents[0].torrentId as ParsedTorrent;
+      expect(added).not.toHaveProperty('xs');
+      expect(added.announce).toEqual(['udp://tracker.example.com:1337']);
+      expect(added.urlList).toEqual([]);
+      expect(res.body.magnetURI).not.toMatch(/192\.168|localhost|10\.0\.0\.5/);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(HASH),
+        'http://10.0.0.5/x.torrent, http://192.168.1.1/announce, http://localhost:3000/',
+      );
     });
 
     it('accepts an upper-case or base32 info hash', async () => {
@@ -139,6 +166,24 @@ describe('/api/torrents', () => {
       expect(res.body.name).toBe('bunny.mp4');
       expect(client.torrents[0].infoHash).toBe(res.body.infoHash);
       expect(client.torrents[0].path).toBe(DOWNLOAD_DIR);
+    });
+
+    it('drops trackers and web seeds on local addresses', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await request(app)
+        .post('/api/torrents')
+        .set('Content-Type', 'application/x-bittorrent')
+        .send(
+          torrentFile('bunny.mp4', {
+            announce: ['http://127.0.0.1:9000/announce', 'udp://t.example:80'],
+            urlList: ['http://[::1]/files/', 'https://cdn.example.com/'],
+          }),
+        );
+
+      const added = client.torrents[0].torrentId as ParsedTorrent;
+      expect(added.announce).toEqual(['udp://t.example:80']);
+      expect(added.urlList).toEqual(['https://cdn.example.com/']);
     });
 
     it('gives different files different info hashes', async () => {

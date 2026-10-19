@@ -184,6 +184,24 @@ describe('peerTransports', () => {
   });
 });
 
+describe('addTorrent peer addresses', () => {
+  it('repairs addresses garbled by bittorrent-tracker before adding them', () => {
+    const torrent = addTorrent(
+      new FakeWebTorrent() as unknown as WebTorrent,
+      MAGNET,
+      '/srv/downloads',
+    );
+
+    torrent.addPeer('49,56,53,46,49,50,53,46,49,57,48,46,53,57:6944');
+    torrent.addPeer('10.0.0.2:6881');
+
+    expect((torrent as unknown as FakeTorrent).addedPeers).toEqual([
+      '185.125.190.59:6944',
+      '10.0.0.2:6881',
+    ]);
+  });
+});
+
 describe('addTorrent and removeTorrent', () => {
   it('stores files in the download directory and deletes them on removal', async () => {
     const fake = new FakeWebTorrent();

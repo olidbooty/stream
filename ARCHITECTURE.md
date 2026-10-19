@@ -274,6 +274,16 @@ const client = new WebTorrent({
   server. `addTorrent()` always adds one, so a failing torrent only logs.
 - Destroy the client on `SIGINT`/`SIGTERM` so it stops announcing and closes
   its sockets. `server/start.ts` does this; a second signal exits at once.
+- **Garbled tracker peers.** `bittorrent-tracker` 11.2.3 (the latest, via
+  `webtorrent` 3.0.21) builds addresses from an HTTP tracker's non-compact
+  peer list as `` `${peer.ip}:${peer.port}` ``, but `bencode` 4 decodes `ip`
+  as a `Uint8Array`, so the address is its bytes joined by commas
+  (`49,56,53,…:6944`) and every connection fails a DNS lookup. Ubuntu's
+  tracker answers IPv6 announces this way, so the first real-swarm check
+  (Risks #9) found no peers at all. `addTorrent()` wraps the torrent's
+  `addPeer()`, which trackers, the DHT and PEX all go through, and
+  `repairPeerAddress()` (`server/peer-address.ts`) decodes those addresses
+  first. Remove it once `bittorrent-tracker` decodes `ip` itself.
 - `client.get()` and `client.remove()` are async. `remove()` rejects for an
   unknown torrent but reports the destroy through its callback, so
   `removeTorrent()` waits for both.

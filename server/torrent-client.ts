@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Instance as ParsedTorrent } from 'parse-torrent';
 import wrtc from 'webrtc-polyfill';
 import WebTorrent, { type Torrent } from 'webtorrent';
+import { repairPeerAddress } from './peer-address.js';
 
 export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(
   new URL('../downloads', import.meta.url),
@@ -127,6 +128,11 @@ export function addTorrent(
     path: downloadDir,
     destroyStoreOnDestroy: true,
   });
+  // Trackers, the DHT and PEX all hand peers to torrent.addPeer(); repair the
+  // addresses bittorrent-tracker garbles before WebTorrent tries them.
+  const addPeer = torrent.addPeer.bind(torrent);
+  torrent.addPeer = (peer, source) =>
+    addPeer(typeof peer === 'string' ? repairPeerAddress(peer) : peer, source);
   // A torrent error with no listener is re-emitted on the client, which the
   // server treats as fatal. One bad torrent must not stop the others.
   torrent.on('error', (err) => {

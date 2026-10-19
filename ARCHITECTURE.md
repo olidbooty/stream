@@ -12,8 +12,8 @@ browser                                   Node (server/)
 │ client/index.html            │  GET /   │ createApp({ client })         │
 │ client/src/main.ts (bundled  │ ───────▶ │   express.static(public/)     │
 │ by Vite into public/assets/) │          │   GET /api/client (status)    │
-└──────────────────────────────┘          │   /api/torrents (add, list,   │
-                                          │     remove)                   │
+│ add form, live torrent list  │ ◀─ SSE ─ │   /api/torrents (add, list,   │
+└──────────────────────────────┘          │     remove)                   │
                                           │   /api/torrents/events (SSE)  │
                                           │   .../files/:index/stream     │
                                           │     (HTTP Range)              │
@@ -168,6 +168,62 @@ socket buffer is full is skipped until it drains, then gets the latest list.
 shutdown.
 
 [sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+
+### Event stream limits
+
+Each open stream holds an HTTP/1.1 connection, and browsers allow about six
+per origin, so several tabs could starve the video Range requests coming in
+M4 (Decision #21). The page therefore keeps **one** stream, and only while
+it is visible: `startLiveUpdates()` (`client/src/live-updates.ts`) closes it
+when the Page Visibility API reports the tab hidden and opens a new one when
+it is shown, and the server sends the whole list on connect. On the server,
+`GET /api/torrents/events` answers `503` with `Retry-After: 10` once
+`MAX_EVENT_STREAMS` (32) are open. HTTP/2 would remove the per-origin limit,
+but browsers only use it over HTTPS.
+
+`EventSource` reconnects by itself after a dropped connection, but treats a
+non-200 answer such as that `503` as final. The page tells the two apart by
+`readyState` in its `error` handler: still `CONNECTING` is a drop, which it
+reports and leaves to the browser; `CLOSED` is a refusal, which it reports
+and retries itself every 10 seconds. Either way a red message appears above
+the list and the list is dimmed until the stream opens again.
+
+## The page
+
+`client/src/main.ts` only wires modules together; each module takes what it
+needs as arguments, so it can be tested in jsdom (see
+[TESTING.md](TESTING.md#client-tests)):
+
+| Module | Does |
+| ------ | ---- |
+| `api.ts` | `createApi()`: typed calls to `/api/torrents`. A non-2xx answer throws `ApiError` carrying the server's `error` text, which the UI shows as is, so validation stays on the server |
+| `torrent-form.ts` | Adds a magnet link (JSON) or a `.torrent` file (the `File` as the raw body) |
+| `torrent-list.ts` | One row per torrent, keyed by info hash and updated in place, so the once-a-second updates never rebuild what the user is focused on. A row fetches `GET /api/torrents/:infoHash` when it is expanded, and again only when its metadata arrives. Remove asks first, since it deletes the files; Retry adds a failed torrent's magnet link again (Decision #22) |
+| `live-updates.ts` | The page's event stream (above) |
+| `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24) |
+
+Response types are imported from `server/torrents-api.ts` with `import type`,
+which the build erases, so the client and server can't drift apart.
+
+### Design system
+
+Decision #27: no framework or component library. The page is small and is
+opened on phones and TV browsers, so it ships plain TypeScript and CSS:
+
+- **Tokens** in `client/src/styles/tokens.css`: colour roles, one colour per
+  torrent state (plus `checking`), a 4 px spacing scale, a type scale, radii
+  and the focus ring, with dark values under `prefers-color-scheme`. Nothing
+  else hard-codes a colour or size.
+- **Components** in `client/src/ui/`, each a function that takes plain data
+  and returns elements, styled by `client/src/styles/components.css`:
+  `button`, `field`, `stateBadge`, `progressBar` (native `<progress>`),
+  `fileList`, `torrentRow`, `statusBanner` and `confirmDialog` (native
+  `<dialog>`). None of them calls the API, so the 2.7 component gallery can
+  render them with `client/src/sample-data.ts`.
+
+Use these for new UI (the 3.4 player, 4.2 warnings) rather than adding styles.
+If the UI outgrows about ten components or its state gets awkward, Preact is
+the smallest step up; the tokens carry over.
 
 ## Target design
 
@@ -432,3 +488,4 @@ design stays next to the code.
 | 24 | State timing | Decided | Accepted: a new torrent shows `connecting` for about 30 s before `noPeers` (WebTorrent's fixed check interval), and verifying existing data also shows as `connecting`; the UI can tell that apart with `hasMetadata && !ready` |
 | 25 | Tracker peer addresses garbled by `bittorrent-tracker` | Decided | Found in the 2.6 real-swarm check. Worked around in our code: `addTorrent()` repairs the addresses before WebTorrent tries them. Remove once fixed upstream. See [Creating the client](#creating-the-client) |
 | 26 | uTP is tried first and TCP only after about 41 s | Decided | Accepted: keep uTP on. It only slows peers down where UDP is blocked, and the DHT fails there too. Revisit (uTP off by default, `UTP=1` to turn it on, a startup warning when the DHT finds no nodes) if users report `noPeers` on such networks |
+| 27 | UI design system and component library | Decided | Our own: design tokens as CSS custom properties and about eight components on native HTML, no framework or component library. Nothing to install or load on TV browsers, and simple jsdom tests. Revisit in 3.4 if the UI passes about ten components; Preact would be the smallest step. See [Design system](#design-system) |

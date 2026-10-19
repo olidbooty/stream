@@ -1,0 +1,391 @@
+/* Base and component styles. Colours and sizes come from tokens.css. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: var(--line-height);
+}
+
+#app {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+  display: grid;
+  gap: var(--space-5);
+}
+
+h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Components set their own display, which would otherwise beat [hidden]. */
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: must win over components */
+  display: none !important;
+}
+
+/* Button */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button--primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.button--danger {
+  border-color: var(--color-danger);
+  background: transparent;
+  color: var(--color-danger);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Field */
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.field__label {
+  font-weight: 600;
+}
+
+.field__input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.field__help {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.field__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+/* Add form */
+.add-torrent {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.add-torrent__form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.add-torrent__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+/* Lines the button up with the input, below the field's label. */
+.add-torrent__row > .button {
+  margin-top: calc(var(--text-md) * var(--line-height) + var(--space-1));
+}
+
+.add-torrent__row .field {
+  flex: 1 1 18rem;
+}
+
+.add-torrent__done {
+  margin: 0;
+  color: var(--color-state-seeding);
+  font-size: var(--text-sm);
+}
+
+/* State badge: --badge-color is set per state */
+.state-badge {
+  --badge-color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: var(--border-width) solid var(--badge-color);
+  border-radius: var(--radius-pill);
+  color: var(--badge-color);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.state-badge::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--badge-color);
+}
+
+.state-badge[data-tone="connecting"] {
+  --badge-color: var(--color-state-connecting);
+}
+.state-badge[data-tone="checking"] {
+  --badge-color: var(--color-state-checking);
+}
+.state-badge[data-tone="downloading"] {
+  --badge-color: var(--color-state-downloading);
+}
+.state-badge[data-tone="seeding"] {
+  --badge-color: var(--color-state-seeding);
+}
+.state-badge[data-tone="noPeers"] {
+  --badge-color: var(--color-state-noPeers);
+}
+.state-badge[data-tone="error"] {
+  --badge-color: var(--color-state-error);
+}
+
+/* Progress bar */
+.progress {
+  display: block;
+  width: 100%;
+  height: var(--space-2);
+  appearance: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  accent-color: var(--color-accent);
+  overflow: hidden;
+}
+
+.progress::-webkit-progress-bar {
+  background: var(--color-surface-raised);
+}
+
+.progress::-webkit-progress-value {
+  background: var(--color-accent);
+}
+
+.progress::-moz-progress-bar {
+  background: var(--color-accent);
+}
+
+/* Status banner: the live-updates error indicator */
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-state-error);
+  border-radius: var(--radius-md);
+  color: var(--color-state-error);
+}
+
+.status-banner::before {
+  content: "";
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--color-state-error);
+}
+
+/* Torrent list and rows */
+.torrent-list__items {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.torrent-list__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.torrent-list[data-stale="true"] .torrent-list__items {
+  opacity: 0.6;
+}
+
+.torrent {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.torrent__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.torrent__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.torrent__toggle::before {
+  content: "▸";
+  flex: none;
+  transition: transform 0.15s;
+}
+
+.torrent__toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.torrent__name {
+  overflow-wrap: anywhere;
+}
+
+.torrent__stats {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.torrent__error {
+  margin: 0;
+  color: var(--color-state-error);
+  font-size: var(--text-sm);
+}
+
+.torrent__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.torrent__files {
+  padding-top: var(--space-2);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.torrent__files-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* File list */
+.file-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.file-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.file-list__path {
+  flex: 1 1 16rem;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.file-list__size {
+  color: var(--color-text-muted);
+}
+
+.file-list__tag {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+}
+
+.file-list__tag--main {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.file-list__tag--warning {
+  color: var(--color-state-noPeers);
+}
+
+/* Confirm dialog */
+.confirm-dialog {
+  max-width: min(28rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-5);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.confirm-dialog__message {
+  margin: 0 0 var(--space-4);
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

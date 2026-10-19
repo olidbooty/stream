@@ -16,6 +16,7 @@ import {
 } from '../test/mocks/webtorrent.js';
 import { EventStream } from './event-stream.js';
 import {
+  MAX_EVENT_STREAMS,
   MAX_TORRENT_FILE_BYTES,
   type TorrentFileInfo,
   torrentsRouter,
@@ -652,6 +653,58 @@ describe('/api/torrents', () => {
       controller.abort();
 
       await vi.waitFor(() => expect(stream.size).toBe(0));
+    });
+
+    it('allows 32 open streams by default', () => {
+      expect(MAX_EVENT_STREAMS).toBe(32);
+    });
+
+    describe('at the stream limit', () => {
+      let limited: Server;
+      let limitedUrl: string;
+
+      beforeEach(async () => {
+        const capped = express();
+        capped.use(
+          '/api/torrents',
+          torrentsRouter({
+            client: client as unknown as WebTorrent,
+            downloadDir: DOWNLOAD_DIR,
+            maxEventStreams: 2,
+          }),
+        );
+        limited = capped.listen(0, '127.0.0.1');
+        await once(limited, 'listening');
+        limitedUrl = `http://127.0.0.1:${(limited.address() as AddressInfo).port}/api/torrents/events`;
+      });
+
+      afterEach(async () => {
+        limited.closeAllConnections();
+        await new Promise((resolve) => limited.close(resolve));
+      });
+
+      it('answers 503 with Retry-After until a stream closes', async () => {
+        const first = new AbortController();
+        const second = new AbortController();
+        for (const signal of [first.signal, second.signal]) {
+          const res = await fetch(limitedUrl, { signal });
+          await readEvent(res.body!.getReader(), { text: '' });
+        }
+
+        const refused = await fetch(limitedUrl, { signal: controller.signal });
+        expect(refused.status).toBe(503);
+        expect(refused.headers.get('retry-after')).toBe('10');
+        expect(await refused.json()).toEqual({
+          error: 'Too many open event streams',
+        });
+
+        first.abort();
+        await vi.waitFor(async () => {
+          const res = await fetch(limitedUrl, { signal: controller.signal });
+          expect(res.status).toBe(200);
+        });
+        second.abort();
+      });
     });
   });
 

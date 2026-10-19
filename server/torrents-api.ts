@@ -26,12 +26,22 @@ import {
 // 256 KiB pieces needs about 8 MB. Most are well under 1 MB.
 export const MAX_TORRENT_FILE_BYTES = 10 * 1024 * 1024;
 
+// Decision #21: each open event stream holds a socket and costs a JSON
+// serialisation per second, so the server limits them. One per visible tab is
+// far below this on a home LAN.
+export const MAX_EVENT_STREAMS = 32;
+
+// How long a refused event stream client should wait before trying again.
+const EVENT_STREAM_RETRY_SECONDS = 10;
+
 const INFO_HASH = /^[0-9a-f]{40}$/i;
 const FILE_INDEX = /^(0|[1-9][0-9]{0,8})$/;
 
 export interface TorrentsRouterOptions {
   client: WebTorrent;
   downloadDir: string;
+  // Open event streams allowed at once; tests lower it.
+  maxEventStreams?: number;
 }
 
 // What the list and the event stream show per torrent.
@@ -145,6 +155,7 @@ function sendError(
 export function torrentsRouter({
   client,
   downloadDir,
+  maxEventStreams = MAX_EVENT_STREAMS,
 }: TorrentsRouterOptions): Router {
   const router = Router();
   const watch = new TorrentWatch(client);
@@ -184,8 +195,13 @@ export function torrentsRouter({
 
   // Server-sent events: the same list as GET /, sent at once and then
   // whenever it changes, checked once a second. Registered before /:infoHash,
-  // which would answer 400 for "events".
+  // which would answer 400 for "events". Above the cap it answers 503, which
+  // EventSource treats as final, so the page retries on its own timer.
   router.get('/events', (_req, res) => {
+    if (events.size >= maxEventStreams) {
+      res.set('Retry-After', String(EVENT_STREAM_RETRY_SECONDS));
+      return sendError(res, 503, 'Too many open event streams');
+    }
     res.writeHead(200, SSE_HEADERS);
     res.flushHeaders();
     events.subscribe(res);

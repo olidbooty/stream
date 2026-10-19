@@ -238,7 +238,10 @@ const client = new WebTorrent({
 
 - **DHT, LSD, TCP and uTP** are on by default. uTP uses the optional native
   `utp-native` package; if it fails to load, WebTorrent falls back to TCP
-  only (`WebTorrent.UTP_SUPPORT` is `false`).
+  only (`WebTorrent.UTP_SUPPORT` is `false`). With uTP loaded, WebTorrent
+  tries each IPv4 peer over uTP first and only falls back to TCP after four
+  failed attempts (about 41 s), so on a network that blocks UDP peers connect
+  slowly. Accepted for now (Decision #26).
 - **WebRTC** uses `webrtc-polyfill` (backed by `node-datachannel`, a native
   module). In `webtorrent@3` its peer library, `@thaunknown/simple-peer`,
   already imports the polyfill, so WebRTC works even without `tracker.wrtc`.
@@ -411,7 +414,7 @@ design stays next to the code.
 | 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |
 | 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Decided | Off by default: the client gets `natUpnp: false` and `natPmp: false`, and `PORT_MAPPING=1` turns both on. No silent router changes; users forward `TORRENT_PORT` by hand, documented in the README. Implemented in 2.6 |
 | 8 | Peer port listens on all interfaces | Decided | Accepted. Peers must reach it, so `HOST` only limits the HTTP port. See [Network exposure](#network-exposure) |
-| 9 | 2.1 not yet checked against a real swarm | Open | Startup, `/api/client` and shutdown were checked; joining TCP/uTP, DHT and WebRTC swarms needs a manual check before 2.6 |
+| 9 | 2.1 not yet checked against a real swarm | Open | Checked in 2.6 on the owner's Mac: ordinary BitTorrent peers over TCP (once #25 was fixed) and the DHT alone. WebRTC peers, incoming peers with forwarded ports and a Raspberry Pi are deferred |
 | 10 | Native modules without prebuilt binaries | Decided | Support Linux x64, macOS, Windows and Raspberry Pi. 2.6 adds a startup check: without `utp-native` the client logs that it is TCP-only; if `node-datachannel` fails to load it runs without WebRTC instead of crashing. The README lists the build tools needed on ARM |
 | 11 | Torrents make the server contact hosts the adder chose | Decided | Strip a magnet's `xs=` URL before `client.add()`. Drop tracker and web seed URLs that aren't http(s)/udp/wss or whose host is localhost or a literal loopback, private, link-local or unspecified IP. Hostnames that resolve to LAN addresses still pass. Implemented in 2.6, before 2.5. See [Network exposure](#network-exposure) |
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
@@ -427,3 +430,5 @@ design stays next to the code.
 | 22 | Failed torrents | Decided | Kept in memory with `state: 'error'` until deleted or re-added, at most 50, lost on restart like #13. WebTorrent has already deleted their files, so a retry starts from zero. See [State and events](#state-and-events) |
 | 23 | `seeding` needs every file | Decided | Progress and state follow the selection (#18): progress is computed from the selected files and `seeding` means every selected file is done, instead of `torrent.done`/`torrent.progress`, which count every file. Implemented in 3.3 |
 | 24 | State timing | Decided | Accepted: a new torrent shows `connecting` for about 30 s before `noPeers` (WebTorrent's fixed check interval), and verifying existing data also shows as `connecting`; the UI can tell that apart with `hasMetadata && !ready` |
+| 25 | Tracker peer addresses garbled by `bittorrent-tracker` | Decided | Found in the 2.6 real-swarm check. Worked around in our code: `addTorrent()` repairs the addresses before WebTorrent tries them. Remove once fixed upstream. See [Creating the client](#creating-the-client) |
+| 26 | uTP is tried first and TCP only after about 41 s | Decided | Accepted: keep uTP on. It only slows peers down where UDP is blocked, and the DHT fails there too. Revisit (uTP off by default, `UTP=1` to turn it on, a startup warning when the DHT finds no nodes) if users report `noPeers` on such networks |

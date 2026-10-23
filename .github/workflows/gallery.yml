@@ -1,0 +1,48 @@
+# Step 2.7: build the component gallery and publish it to GitHub Pages.
+# Runs on main only, after the same checks as a PR (see PROJECT_MANAGEMENT.md),
+# so a broken main never replaces the published gallery.
+# Needs Settings > Pages > Source: GitHub Actions.
+name: Component gallery
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push doesn't cancel one in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build:gallery
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist-gallery
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

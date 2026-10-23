@@ -177,6 +177,24 @@ to `test/mocks/webtorrent.test.ts`) rather than mocking ad hoc in each test.
 The fake is plain TypeScript on `node:events` and `node:stream`, so it works
 in both the `server` and `client` test projects.
 
+## Component gallery and style checks
+
+The component gallery (`client/gallery/`, see
+[README](README.md#component-gallery)) is the visual check for UI changes:
+open it with `npm run dev` at `/gallery/` and look at the states you touched,
+in light and dark and at phone width. When you add a component or a state,
+add an entry to `client/src/gallery/entries.ts`.
+
+Two tests keep it honest without screenshots (those come with Playwright in
+4.5):
+
+- `client/src/gallery/gallery.test.ts` renders every entry in jsdom and fails
+  if one throws or comes out empty, if a state badge tone has no entry, or if
+  the theme switch stops setting `data-theme`.
+- `client/src/styles/styles.test.ts` fails on a colour, length or opacity
+  literal in `components.css` (use a token from `tokens.css`), on a `var()`
+  no token defines, and if the forced dark theme drifts from the OS one.
+
 ## Manual testing
 
 Peer connectivity, playback and codecs can only be checked with the real

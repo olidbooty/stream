@@ -1,7 +1,7 @@
 import './styles/tokens.css';
 import './styles/components.css';
 import { createApi } from './api.js';
-import { type LiveStatus, startLiveUpdates } from './live-updates.js';
+import { STATUS_MESSAGES, startLiveUpdates } from './live-updates.js';
 import { torrentForm } from './torrent-form.js';
 import { torrentList } from './torrent-list.js';
 import { confirmDialog } from './ui/confirm-dialog.js';
@@ -9,13 +9,6 @@ import { statusBanner } from './ui/status-banner.js';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('index.html is missing the #app element');
-
-const STATUS_MESSAGES: Record<Exclude<LiveStatus, 'live'>, string> = {
-  reconnecting:
-    'Connection to the server lost. Reconnecting; the list may be out of date.',
-  unavailable:
-    'Live updates are unavailable right now. Retrying in 10 seconds; the list may be out of date.',
-};
 
 const api = createApi();
 const banner = statusBanner();

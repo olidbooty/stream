@@ -11,6 +11,7 @@
     "start": "tsx server/index.ts",
     "dev": "vite",
     "build": "vite build",
+    "build:gallery": "vite build --config vite.gallery.config.ts",
     "typecheck": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",

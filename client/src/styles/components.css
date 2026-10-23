@@ -15,7 +15,7 @@ body {
 }
 
 #app {
-  max-width: 56rem;
+  max-width: var(--width-page);
   margin: 0 auto;
   padding: var(--space-5) var(--space-4);
   display: grid;
@@ -48,7 +48,7 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 2.5rem;
+  min-height: var(--control-height);
   padding: var(--space-2) var(--space-4);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
@@ -71,7 +71,7 @@ h2 {
 }
 
 .button:disabled {
-  opacity: 0.55;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 
@@ -87,7 +87,7 @@ h2 {
 
 .field__input {
   width: 100%;
-  min-height: 2.5rem;
+  min-height: var(--control-height);
   padding: var(--space-2) var(--space-3);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
@@ -135,7 +135,7 @@ h2 {
 }
 
 .add-torrent__row .field {
-  flex: 1 1 18rem;
+  flex: 1 1 var(--width-field);
 }
 
 .add-torrent__done {
@@ -160,8 +160,8 @@ h2 {
 
 .state-badge::before {
   content: "";
-  width: 0.5rem;
-  height: 0.5rem;
+  width: var(--dot-sm);
+  height: var(--dot-sm);
   border-radius: 50%;
   background: var(--badge-color);
 }
@@ -225,8 +225,8 @@ h2 {
 .status-banner::before {
   content: "";
   flex: none;
-  width: 0.625rem;
-  height: 0.625rem;
+  width: var(--dot-md);
+  height: var(--dot-md);
   border-radius: 50%;
   background: var(--color-state-error);
 }
@@ -246,7 +246,7 @@ h2 {
 }
 
 .torrent-list[data-stale="true"] .torrent-list__items {
-  opacity: 0.6;
+  opacity: var(--opacity-stale);
 }
 
 .torrent {
@@ -341,7 +341,7 @@ h2 {
 }
 
 .file-list__path {
-  flex: 1 1 16rem;
+  flex: 1 1 var(--width-file-path);
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
@@ -368,7 +368,7 @@ h2 {
 
 /* Confirm dialog */
 .confirm-dialog {
-  max-width: min(28rem, calc(100vw - 2 * var(--space-4)));
+  max-width: min(var(--width-dialog), calc(100vw - 2 * var(--space-4)));
   padding: var(--space-5);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
@@ -377,7 +377,7 @@ h2 {
 }
 
 .confirm-dialog::backdrop {
-  background: rgb(0 0 0 / 0.45);
+  background: var(--color-backdrop);
 }
 
 .confirm-dialog__message {

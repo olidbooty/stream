@@ -183,7 +183,7 @@ Peer connectivity, playback and codecs can only be checked with the real
 client and a real browser. Until 4.5 adds a Playwright test, check them by
 hand:
 
-1. `npm run build && npm start`, then open `http://localhost:3000`. Use
+1. `npm run build && npm start`, then open `http://localhost:1234`. Use
    `npm run dev` for quick UI work, but check playback against the built
    app served by Express.
 2. Test both kinds of swarm the server should reach:

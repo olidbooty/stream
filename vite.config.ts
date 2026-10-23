@@ -13,7 +13,7 @@ export default defineConfig({
     // The API lives in the Express server, so run `npm start` alongside
     // `npm run dev`. Server-sent events pass through unbuffered.
     proxy: {
-      '/api': `http://localhost:${process.env.PORT ?? 3000}`,
+      '/api': `http://localhost:${process.env.PORT ?? 1234}`,
     },
   },
 });

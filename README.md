@@ -29,7 +29,7 @@ over TCP, uTP and WebRTC. It is configured with environment variables:
 | `PORT`         | `3000`        | HTTP port for the app |
 | `HOST`         | `0.0.0.0`     | HTTP bind address. The peer ports always listen on all interfaces |
 | `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Created at startup if missing; must be writable. Removing a torrent deletes its files |
-| `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
+| `TORRENT_PORT` | `1234`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
 | `DHT_PORT`     | `6882`        | UDP port for the DHT. `0` picks a random port |
 | `PORT_MAPPING` | `0`           | `1` lets the client ask your router to forward the peer port (UPnP and NAT-PMP) |
 
@@ -46,7 +46,7 @@ to it if its ports are reachable, and many swarms have more peers that wait
 for incoming connections than ones that accept them. For the most peers,
 forward these on your router to the machine running the server:
 
-- `TORRENT_PORT` (default `6881`), **TCP and UDP**
+- `TORRENT_PORT` (default `1234`), **TCP and UDP**
 - `DHT_PORT` (default `6882`), **UDP**
 
 Never forward the HTTP port (`PORT`): the app has no authentication.

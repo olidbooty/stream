@@ -228,7 +228,7 @@ import WebTorrent from 'webtorrent';
 import wrtc from 'webrtc-polyfill';
 
 const client = new WebTorrent({
-  torrentPort, // 6881
+  torrentPort, // 1234
   dhtPort, // 6882
   natUpnp: portMapping, // false unless PORT_MAPPING=1
   natPmp: portMapping,
@@ -262,7 +262,7 @@ const client = new WebTorrent({
   peers) are skipped. The startup log lists what the client can use.
 - `client.on('listening')` fires once it is bound; `client.address()` gives
   the peer port. `TORRENT_PORT` (TCP and uTP) and `DHT_PORT` (UDP) default
-  to `6881` and `6882`, fixed so they can be forwarded on the router; `0`
+  to `1234` and `6882`, fixed so they can be forwarded on the router; `0`
   picks a random port. Without incoming connections the client still works,
   but finds fewer peers.
 - The peer ports bind to `0.0.0.0` whatever `HOST` says. `HOST` only

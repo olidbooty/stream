@@ -314,7 +314,7 @@ export class FakeWebTorrent extends EventEmitter {
 
   // The real client emits 'listening' once its peer port is bound. Port 0 means
   // the OS picked one, so stand in a fixed port for it.
-  simulateListening(port = this.torrentPort || 6881): void {
+  simulateListening(port = this.torrentPort || 1234): void {
     this.torrentPort = port;
     this.listening = true;
     this.emit('listening');

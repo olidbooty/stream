@@ -49,10 +49,32 @@
   --radius-pill: 999px;
   --border-width: 1px;
   --focus-ring: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-focus);
+
+  /* Sizes */
+  --control-height: 2.5rem;
+  --dot-sm: 0.5rem;
+  --dot-md: 0.625rem;
+
+  /* Layout widths */
+  --width-page: 56rem;
+  --width-dialog: 28rem;
+  --width-field: 18rem;
+  --width-file-path: 16rem;
+
+  /* Overlays and dimming */
+  --color-backdrop: rgb(0 0 0 / 0.45);
+  --opacity-disabled: 0.55;
+  --opacity-stale: 0.6;
+}
+
+/* Decision #29: data-theme on <html> forces a theme; without it the OS
+ * setting decides. Keep the two dark blocks below identical. */
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-surface: #14161a;
     --color-surface-raised: #1f2228;
     --color-text: #e8eaef;
@@ -71,4 +93,26 @@
     --color-state-noPeers: #f0c060;
     --color-state-error: #ff8a7a;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-surface: #14161a;
+  --color-surface-raised: #1f2228;
+  --color-text: #e8eaef;
+  --color-text-muted: #a2a8b6;
+  --color-border: #353a44;
+  --color-accent: #7b9cff;
+  --color-accent-text: #0d1020;
+  --color-danger: #ff8a7a;
+  --color-danger-text: #1d0a07;
+  --color-focus: #7b9cff;
+
+  --color-state-connecting: #f0c060;
+  --color-state-checking: #b69cff;
+  --color-state-downloading: #7b9cff;
+  --color-state-seeding: #6fd08c;
+  --color-state-noPeers: #f0c060;
+  --color-state-error: #ff8a7a;
 }

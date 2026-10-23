@@ -31,7 +31,7 @@ describe('torrentConfig', () => {
   it('defaults to ./downloads, fixed ports and no port mapping', () => {
     expect(torrentConfig({})).toEqual({
       downloadDir: DEFAULT_DOWNLOAD_DIR,
-      torrentPort: 1234,
+      torrentPort: 6881,
       dhtPort: 6882,
       portMapping: false,
     });

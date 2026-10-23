@@ -13,7 +13,7 @@ export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(
 
 // Fixed, so the router can forward them. TCP and uTP (UDP) share the torrent
 // port; the DHT needs a UDP port of its own.
-export const DEFAULT_TORRENT_PORT = 1234;
+export const DEFAULT_TORRENT_PORT = 6881;
 export const DEFAULT_DHT_PORT = 6882;
 
 export interface TorrentConfig {

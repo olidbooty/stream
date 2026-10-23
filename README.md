@@ -78,6 +78,18 @@ For frontend work, `npm run dev` starts the Vite dev server with hot reload.
 It forwards `/api` to the Express server on `PORT` (default `1234`), so run
 `npm start` in another terminal.
 
+### Component gallery
+
+`client/gallery/` is a page that shows every UI component in each of its
+states, drawn from sample data with no server, with a switch to force light or
+dark. In development open `http://localhost:5173/gallery/` from `npm run dev`.
+`npm run build:gallery` builds it on its own into `dist-gallery/`.
+
+On every push to `main`, `.github/workflows/gallery.yml` runs lint, typecheck
+and the tests, then publishes the gallery to GitHub Pages at
+<https://olidbooty.github.io/stream/>. This needs Pages turned on once:
+Settings > Pages > Source: GitHub Actions.
+
 ## Using the app
 
 Open the server's URL in a browser on any device on your network. Paste a
@@ -170,6 +182,8 @@ stay in `DOWNLOAD_DIR` (see Risks & Decisions #13).
 
 ```
 client/                   frontend source (Vite root)
+client/gallery/           component gallery page (step 2.7)
+client/src/gallery/       its entries, layout and smoke test
 server/app.ts             Express app (createApp), no port binding
 server/index.ts           entry point: checks WebRTC can load, then runs start.ts
 server/start.ts           creates the torrent client, binds HOST/PORT
@@ -191,6 +205,8 @@ client/src/torrent-list.ts  the live torrent list and its file lists
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)
+dist-gallery/             component gallery build for GitHub Pages (gitignored)
+.github/workflows/        publishes the gallery from main
 downloads/                default DOWNLOAD_DIR (gitignored)
 test/mocks/               shared test doubles, e.g. the WebTorrent fake
 biome.json                Biome lint and format config
@@ -203,6 +219,7 @@ biome.json                Biome lint and format config
 | `npm start`          | Run the Express server (via tsx)     |
 | `npm run dev`        | Vite dev server                      |
 | `npm run build`      | Build the frontend into `public/`    |
+| `npm run build:gallery` | Build the component gallery into `dist-gallery/` |
 | `npm run typecheck`  | Type-check everything with `tsc`     |
 | `npm run lint`       | Lint and check formatting with Biome |
 | `npm run lint:fix`   | Apply Biome's safe fixes and format  |

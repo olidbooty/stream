@@ -67,7 +67,7 @@
   --opacity-stale: 0.6;
 }
 
-/* Decision #29: data-theme on <html> forces a theme; without it the OS
+/* Decision #30: data-theme on <html> forces a theme; without it the OS
  * setting decides. Keep the two dark blocks below identical. */
 :root[data-theme="light"] {
   color-scheme: light;

@@ -211,15 +211,28 @@ Decision #27: no framework or component library. The page is small and is
 opened on phones and TV browsers, so it ships plain TypeScript and CSS:
 
 - **Tokens** in `client/src/styles/tokens.css`: colour roles, one colour per
-  torrent state (plus `checking`), a 4 px spacing scale, a type scale, radii
-  and the focus ring, with dark values under `prefers-color-scheme`. Nothing
-  else hard-codes a colour or size.
+  torrent state (plus `checking`), a 4 px spacing scale, a type scale, radii,
+  the focus ring, control height, dot sizes, layout widths, the dialog
+  backdrop and the disabled and stale opacities. Nothing else hard-codes a
+  colour, length or opacity (Decision #29); `client/src/styles/styles.test.ts`
+  fails on any such literal in `components.css` and on any `var()` that no
+  token defines.
+- **Themes** (Decision #30): dark values apply under `prefers-color-scheme:
+  dark`, unless `data-theme="light"` is set on `<html>`; `data-theme="dark"`
+  forces them. The two dark blocks must match, which the same test checks.
+  The gallery uses this; the main page has no switch yet.
 - **Components** in `client/src/ui/`, each a function that takes plain data
   and returns elements, styled by `client/src/styles/components.css`:
   `button`, `field`, `stateBadge`, `progressBar` (native `<progress>`),
   `fileList`, `torrentRow`, `statusBanner` and `confirmDialog` (native
-  `<dialog>`). None of them calls the API, so the 2.7 component gallery can
-  render them with `client/src/sample-data.ts`.
+  `<dialog>`). None of them calls the API, so the component gallery
+  renders them with `client/src/sample-data.ts`.
+- **Gallery** (step 2.7): `client/gallery/index.html` shows every component
+  in each state, plus the add form and torrent list with a stubbed API. The
+  states are one registry, `client/src/gallery/entries.ts`, which the page
+  and its smoke test both walk. Add an entry for each new component or state.
+  It is published to GitHub Pages from `main`; see the
+  [README](README.md#component-gallery).
 
 Use these for new UI (the 3.4 player, 4.2 warnings) rather than adding styles.
 If the UI outgrows about ten components or its state gets awkward, Preact is
@@ -504,3 +517,5 @@ design stays next to the code.
 | 26 | uTP is tried first and TCP only after about 41 s | Decided | Accepted: keep uTP on. It only slows peers down where UDP is blocked, and the DHT fails there too. Revisit (uTP off by default, `UTP=1` to turn it on, a startup warning when the DHT finds no nodes) if users report `noPeers` on such networks |
 | 27 | UI design system and component library | Decided | Our own: design tokens as CSS custom properties and about eight components on native HTML, no framework or component library. Nothing to install or load on TV browsers, and simple jsdom tests. Revisit in 3.4 if the UI passes about ten components; Preact would be the smallest step. See [Design system](#design-system) |
 | 28 | DHT found no nodes on a host with IPv6 | Decided | Found when a trackerless magnet got no peers on the owner's Mac. `createTorrentClient()` makes DNS lookups prefer IPv4 for the whole process and bootstraps the DHT from a wider router list including `dht.libtorrent.org:25401`. Remove the DNS setting once `k-rpc-socket` looks up IPv4 itself. See [Creating the client](#creating-the-client) |
+| 29 | Design tokens are not the only source of colours and sizes | Decided | Found in the 23 Oct 26 frontend review: `components.css` hard-coded ten colours, lengths and opacities. They are tokens now, and a test fails on any colour, length or opacity literal in `components.css`. Step 2.7. See [Design system](#design-system) |
+| 30 | Dark mode can only follow the OS setting | Decided | `data-theme="light"` or `"dark"` on `<html>` forces a theme; without it `prefers-color-scheme` decides. Plain duplicated dark values rather than CSS `light-dark()`, which older TV browsers lack. Step 2.7 |

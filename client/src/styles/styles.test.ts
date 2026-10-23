@@ -25,7 +25,7 @@ function defined(css: string): Set<string> {
   return new Set(Array.from(css.matchAll(/(--[\w-]+)\s*:/g), (m) => m[1]));
 }
 
-describe('components.css (Decision #27)', () => {
+describe('components.css (Decisions #27 and #29)', () => {
   // Colours and sizes belong in tokens.css, so the UI changes from one place.
   it('has no colour, length or opacity literals', () => {
     const literal =
@@ -47,7 +47,7 @@ describe('components.css (Decision #27)', () => {
   });
 });
 
-describe('tokens.css themes (Decision #29)', () => {
+describe('tokens.css themes (Decision #30)', () => {
   it('forces dark with the same values the OS setting gives', () => {
     const fromOS = block(tokens, ':root:not([data-theme="light"])');
     const forced = block(tokens, ':root[data-theme="dark"]').filter(

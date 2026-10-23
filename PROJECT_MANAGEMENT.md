@@ -75,7 +75,7 @@ depends on it moves earlier or later to match.
 | --------- | ----- | ------ |
 | M1 - Setup: project skeleton | 1.1–1.3 | npm workspace, Express and WebTorrent, static file server |
 | M2 - Setup: frontend, network & testing | 1.4–1.10 | Vite, LAN access, Vitest, smoke tests, WebTorrent mock, TypeScript migration |
-| M3 - WebTorrent on the server | 2.1–2.6 | Node WebTorrent client, torrent API, metadata, live swarm state, frontend, peer connectivity |
+| M3 - WebTorrent on the server | 2.1–2.7 | Node WebTorrent client, torrent API, metadata, live swarm state, frontend, peer connectivity, component gallery |
 | M4 - Playback | 3.1–3.5 | Picking the media file, HTTP range streaming, piece prioritisation, `<video>` playback, buffer health |
 | M5 - Codecs & storage hardening | 4.1–4.5 | Codec audit, unsupported-format errors, disk limits and cleanup, optional native ffmpeg and Playwright e2e |
 
@@ -97,8 +97,10 @@ The Dashboard shows live progress for each milestone.
    npm test
    npm run build
    ```
-   Add or update tests as described in [TESTING.md](TESTING.md). There is no CI
-   yet, so these local runs are the only check.
+   Add or update tests as described in [TESTING.md](TESTING.md). Pull requests
+   have no CI, so these local runs are the only check before merging. After
+   a merge, the gallery workflow runs lint, typecheck and the tests on `main`
+   before it publishes the component gallery.
 6. Open a pull request against `main`, with the step ID and name in the title.
    PRs are merged with a merge commit. In the description, cover:
    - what the step delivers, and anything from its row it doesn't

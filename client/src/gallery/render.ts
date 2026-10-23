@@ -16,7 +16,7 @@ function slug(text: string): string {
     .replace(/^-|-$/g, '');
 }
 
-// Decision #29: data-theme on <html> forces a theme; none follows the OS.
+// Decision #30: data-theme on <html> forces a theme; none follows the OS.
 export function setTheme(root: HTMLElement, theme: Theme): void {
   if (theme === 'system') delete root.dataset.theme;
   else root.dataset.theme = theme;

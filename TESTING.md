@@ -59,25 +59,40 @@ need as arguments (a root element, an API helper) and keep `main.ts`
 to wiring them together. Then a test builds its own DOM:
 
 ```ts
-import { afterEach, expect, it } from 'vitest';
-import { renderTorrentForm } from './torrent-form.js';
+import { afterEach, expect, it, vi } from 'vitest';
+import { sampleSummary } from './sample-data.js';
+import { torrentForm } from './torrent-form.js';
 
 afterEach(() => {
   document.body.replaceChildren();
 });
 
-it('rejects an invalid magnet link', () => {
-  const root = document.createElement('main');
+it('adds a magnet link', async () => {
+  const api = {
+    addMagnet: vi.fn().mockResolvedValue(sampleSummary()),
+    addTorrentFile: vi.fn(),
+  };
+  const root = torrentForm({ api, onAdded: vi.fn() });
   document.body.append(root);
-
-  renderTorrentForm(root);
-  // ...fill in the input, submit, assert on root
+  // ...fill in the input, submit, assert on api and root
 });
 ```
 
 The browser doesn't run WebTorrent (see [ARCHITECTURE.md](ARCHITECTURE.md)),
-so client tests stub the server's API, for example by passing in a fake
-`fetch`, rather than mocking WebTorrent.
+so client tests stub the server's API rather than mocking WebTorrent: pass
+the module a fake `api` object (see `client/src/torrent-list.test.ts`), or
+pass `createApi()` a fake `fetch` (see `client/src/api.test.ts`).
+`client/src/sample-data.ts` builds torrents shaped like the server's answers;
+its types come from `server/torrents-api.ts`, so they can't drift.
+
+jsdom lacks two browser APIs the page uses:
+
+- **`EventSource`.** `startLiveUpdates()` takes a `createEventSource`
+  function, so `client/src/live-updates.test.ts` passes a fake that opens,
+  sends events, drops (the browser retries by itself) or refuses (a `503`,
+  after which the browser gives up), and switches `document.visibilityState`.
+- **`<dialog>`'s `showModal()` and `close()`.** `client/src/ui/components.test.ts`
+  stands in for them on `HTMLDialogElement.prototype`.
 
 Pure functions such as `isMagnetURI()` (`server/magnet.ts`),
 `selectMedia()` (`server/media.ts`) and `filterSources()`
@@ -168,7 +183,7 @@ Peer connectivity, playback and codecs can only be checked with the real
 client and a real browser. Until 4.5 adds a Playwright test, check them by
 hand:
 
-1. `npm run build && npm start`, then open `http://localhost:3000`. Use
+1. `npm run build && npm start`, then open `http://localhost:1234`. Use
    `npm run dev` for quick UI work, but check playback against the built
    app served by Express.
 2. Test both kinds of swarm the server should reach:

@@ -1,3 +1,4 @@
+import { getDefaultResultOrder, setDefaultResultOrder } from 'node:dns';
 import {
   chmodSync,
   mkdtempSync,
@@ -14,6 +15,7 @@ import {
   addTorrent,
   createTorrentClient,
   DEFAULT_DOWNLOAD_DIR,
+  DHT_BOOTSTRAP,
   destroyTorrentClient,
   ensureDownloadDir,
   peerTransports,
@@ -152,6 +154,17 @@ describe('createTorrentClient', () => {
     const [off, on] = FakeWebTorrent.instances;
     expect(off.opts).toMatchObject({ natUpnp: false, natPmp: false });
     expect(on.opts).toMatchObject({ natUpnp: true, natPmp: true });
+  });
+
+  it('bootstraps the DHT from IPv4 addresses of a wider router list', () => {
+    setDefaultResultOrder('verbatim');
+    createTorrentClient(options);
+
+    expect(FakeWebTorrent.instances[0].opts.dht).toEqual({
+      bootstrap: DHT_BOOTSTRAP,
+    });
+    expect(DHT_BOOTSTRAP).toContain('dht.libtorrent.org:25401');
+    expect(getDefaultResultOrder()).toBe('ipv4first');
   });
 
   it('skips WebSocket trackers without WebRTC', () => {

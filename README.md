@@ -13,7 +13,7 @@ Node.js 24 LTS or newer (see `.nvmrc`).
 ```sh
 npm install
 npm run build   # bundle client/ into public/
-npm start       # serve public/ on http://localhost:3000
+npm start       # serve public/ on http://localhost:1234
 ```
 
 The server binds to `0.0.0.0`, so other devices on your network can open the
@@ -26,7 +26,7 @@ over TCP, uTP and WebRTC. It is configured with environment variables:
 
 | Variable       | Default       | What it sets |
 | -------------- | ------------- | ------------ |
-| `PORT`         | `3000`        | HTTP port for the app |
+| `PORT`         | `1234`        | HTTP port for the app |
 | `HOST`         | `0.0.0.0`     | HTTP bind address. The peer ports always listen on all interfaces |
 | `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Created at startup if missing; must be writable. Removing a torrent deletes its files |
 | `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
@@ -75,15 +75,29 @@ stopping: without `utp-native` it connects over TCP only, and without
 example `peers over TCP, DHT, LSD, trackers`.
 
 For frontend work, `npm run dev` starts the Vite dev server with hot reload.
+It forwards `/api` to the Express server on `PORT` (default `1234`), so run
+`npm start` in another terminal.
+
+## Using the app
+
+Open the server's URL in a browser on any device on your network. Paste a
+magnet link or pick a `.torrent` file to add a torrent. The list below
+updates live with each torrent's state, progress, size, peers and speeds;
+expand a torrent to see its files, with the one the player will pick marked
+as the main file. **Remove** asks first, because it deletes the downloaded
+files, and a failed torrent has **Retry**, which adds it again.
+
+If the page loses its live connection, a red message above the list says so
+and the list is dimmed until updates resume. The page reconnects by itself.
 
 ## API
 
-There is no UI for torrents yet (2.5), so use the API directly:
+The page uses this API, and scripts can too:
 
 | Request | What it does |
 | ------- | ------------ |
 | `GET /api/torrents` | List torrents: info hash, name, magnet link, `hasMetadata`, `ready`, total `length`, progress, peers, speeds, `state` and `errorMessage` |
-| `GET /api/torrents/events` | The same list as a [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream of `torrents` events: sent at once, then whenever it changes, at most once a second |
+| `GET /api/torrents/events` | The same list as a [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream of `torrents` events: sent at once, then whenever it changes, at most once a second. At most 32 streams are open at once; above that it answers `503` with `Retry-After: 10` |
 | `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length, `media`, `sample`), the `mainFile` to play and the `videos` to list. While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files`, `length`, `mainFile` and `videos` are `null`. For a failed torrent `files`, `mainFile` and `videos` are `null` |
 | `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
 | `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
@@ -132,13 +146,13 @@ How they are chosen is in
 [ARCHITECTURE.md](ARCHITECTURE.md#choosing-the-media-file).
 
 ```sh
-curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/json' \
+curl -X POST localhost:1234/api/torrents -H 'Content-Type: application/json' \
   -d '{"magnet": "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel"}'
-curl -X POST localhost:3000/api/torrents -H 'Content-Type: application/x-bittorrent' \
+curl -X POST localhost:1234/api/torrents -H 'Content-Type: application/x-bittorrent' \
   --data-binary @sintel.torrent
-curl -N localhost:3000/api/torrents/events   # Ctrl+C to stop
+curl -N localhost:1234/api/torrents/events   # Ctrl+C to stop
 curl -r 0-1023 -o head.bin \
-  localhost:3000/api/torrents/08ada5a7a6183aae1e09d831df6748d566095a10/files/0/stream
+  localhost:1234/api/torrents/08ada5a7a6183aae1e09d831df6748d566095a10/files/0/stream
 ```
 
 ```
@@ -169,6 +183,13 @@ server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation
 server/torrent-sources.ts drops trackers, web seeds and xs= URLs on local addresses
 server/media.ts           classifies a torrent's files and picks the one to play
+client/src/main.ts        page entry point: wires the modules below together
+client/src/api.ts         typed client for /api/torrents
+client/src/live-updates.ts  the page's one event stream (Decision #21)
+client/src/torrent-form.ts  add a magnet link or .torrent file
+client/src/torrent-list.ts  the live torrent list and its file lists
+client/src/ui/            design system components (Decision #27)
+client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)
 downloads/                default DOWNLOAD_DIR (gitignored)
 test/mocks/               shared test doubles, e.g. the WebTorrent fake

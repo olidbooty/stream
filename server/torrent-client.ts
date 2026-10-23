@@ -1,3 +1,4 @@
+import { setDefaultResultOrder } from 'node:dns';
 import { constants } from 'node:fs';
 import { access, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -77,6 +78,16 @@ export async function ensureDownloadDir(downloadDir: string): Promise<void> {
   }
 }
 
+// Where the DHT finds its first nodes. WebTorrent's default list lacks
+// dht.libtorrent.org, and its other routers often don't answer
+// (Decision #28).
+export const DHT_BOOTSTRAP = [
+  'router.bittorrent.com:6881',
+  'router.utorrent.com:6881',
+  'dht.transmissionbt.com:6881',
+  'dht.libtorrent.org:25401',
+];
+
 export interface PeerOptions
   extends Pick<TorrentConfig, 'torrentPort' | 'dhtPort' | 'portMapping'> {
   // False when node-datachannel can't load (server/peer-support.ts).
@@ -94,11 +105,16 @@ export function createTorrentClient({
   portMapping,
   webrtc,
 }: PeerOptions): WebTorrent {
+  // The DHT looks up its bootstrap hosts with dns.lookup() and sends over an
+  // IPv4 socket. Node returns the resolver's first address, often IPv6, and
+  // the send fails silently, so the DHT starts with no nodes (Decision #28).
+  setDefaultResultOrder('ipv4first');
   return new WebTorrent({
     torrentPort,
     dhtPort,
     natUpnp: portMapping,
     natPmp: portMapping,
+    dht: { bootstrap: DHT_BOOTSTRAP },
     tracker: { wrtc: webrtc ? wrtc : false },
   });
 }

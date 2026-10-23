@@ -343,6 +343,20 @@ const client = new WebTorrent({
   `addPeer()`, which trackers, the DHT and PEX all go through, and
   `repairPeerAddress()` (`server/peer-address.ts`) decodes those addresses
   first. Remove it once `bittorrent-tracker` decodes `ip` itself.
+- **DHT bootstrap.** The DHT (`bittorrent-dht` via `k-rpc-socket`) starts by
+  asking a few bootstrap routers for nodes. It looks their names up with
+  `dns.lookup()` and no address family, then sends over an IPv4 socket. Since
+  Node 17 the lookup returns the resolver's first answer, and on a host with
+  IPv6 that is an IPv6 address for `dht.transmissionbt.com` (and
+  `dht.libtorrent.org`), so the send fails with `EINVAL` and is silently
+  dropped. The other default routers, `router.bittorrent.com` and
+  `router.utorrent.com`, often don't answer. The DHT then reports `ready`
+  with no nodes after 2.5 s and only tries again after 15 minutes, so a
+  magnet without trackers finds no peers at all. Found on the owner's Mac.
+  `createTorrentClient()` therefore calls `dns.setDefaultResultOrder('ipv4first')`
+  for the whole process and passes `DHT_BOOTSTRAP`, which adds
+  `dht.libtorrent.org:25401` (Decision #28). HTTP trackers and web seeds still
+  reach IPv6-only hosts: Node falls back to IPv6 when there's no IPv4 address.
 - `client.get()` and `client.remove()` are async. `remove()` rejects for an
   unknown torrent but reports the destroy through its callback, so
   `removeTorrent()` waits for both.
@@ -489,3 +503,4 @@ design stays next to the code.
 | 25 | Tracker peer addresses garbled by `bittorrent-tracker` | Decided | Found in the 2.6 real-swarm check. Worked around in our code: `addTorrent()` repairs the addresses before WebTorrent tries them. Remove once fixed upstream. See [Creating the client](#creating-the-client) |
 | 26 | uTP is tried first and TCP only after about 41 s | Decided | Accepted: keep uTP on. It only slows peers down where UDP is blocked, and the DHT fails there too. Revisit (uTP off by default, `UTP=1` to turn it on, a startup warning when the DHT finds no nodes) if users report `noPeers` on such networks |
 | 27 | UI design system and component library | Decided | Our own: design tokens as CSS custom properties and about eight components on native HTML, no framework or component library. Nothing to install or load on TV browsers, and simple jsdom tests. Revisit in 3.4 if the UI passes about ten components; Preact would be the smallest step. See [Design system](#design-system) |
+| 28 | DHT found no nodes on a host with IPv6 | Decided | Found when a trackerless magnet got no peers on the owner's Mac. `createTorrentClient()` makes DNS lookups prefer IPv4 for the whole process and bootstraps the DHT from a wider router list including `dht.libtorrent.org:25401`. Remove the DNS setting once `k-rpc-socket` looks up IPv4 itself. See [Creating the client](#creating-the-client) |

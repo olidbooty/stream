@@ -11,7 +11,7 @@ import {
 // Runs the server. Imported by server/index.ts once it knows whether WebRTC
 // can load.
 export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
-  const port = Number(process.env.PORT) || 1234;
+  const port = Number(process.env.PORT) || 3000;
   // 0.0.0.0 exposes the server to other devices on the LAN; set HOST=127.0.0.1 to keep it local.
   const host = process.env.HOST || '0.0.0.0';
   const config = torrentConfig();

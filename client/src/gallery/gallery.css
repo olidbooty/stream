@@ -1,0 +1,82 @@
+/* Gallery layout only. Components bring their own styles from components.css. */
+.gallery {
+  max-width: var(--width-page);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.gallery__header {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.gallery__intro {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.gallery__theme {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.gallery__theme legend {
+  padding: 0 var(--space-1);
+  font-weight: 600;
+}
+
+.gallery__theme-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
+.gallery__contents ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gallery__contents a {
+  color: var(--color-accent);
+}
+
+.gallery__section {
+  display: grid;
+  gap: var(--space-4);
+  scroll-margin-top: var(--space-4);
+}
+
+.gallery__section h2 {
+  margin: 0;
+}
+
+.gallery__entry {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.gallery__state {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.gallery__frame {
+  padding: var(--space-4);
+  border: var(--border-width) dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}

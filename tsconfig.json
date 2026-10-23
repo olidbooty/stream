@@ -18,6 +18,7 @@
     "client/src",
     "test",
     "vite.config.ts",
+    "vite.gallery.config.ts",
     "vitest.config.ts"
   ]
 }

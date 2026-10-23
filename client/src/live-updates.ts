@@ -31,6 +31,14 @@ export interface LiveUpdatesOptions {
 
 export const LIVE_RETRY_MS = 10_000;
 
+// What the page's status banner says while live updates are down.
+export const STATUS_MESSAGES: Record<Exclude<LiveStatus, 'live'>, string> = {
+  reconnecting:
+    'Connection to the server lost. Reconnecting; the list may be out of date.',
+  unavailable:
+    'Live updates are unavailable right now. Retrying in 10 seconds; the list may be out of date.',
+};
+
 // Decision #21: one event stream per page, closed while the tab is hidden so a
 // background tab holds no connection, and reopened when it is shown. The server
 // sends the whole list on connect, so nothing is missed in between.

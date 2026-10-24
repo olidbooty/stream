@@ -136,14 +136,17 @@ export function torrentList({
         let entry = entries.get(torrent.infoHash);
         if (entry) {
           const wasFailed = entry.torrent.state === 'error';
+          const wasSeeding = entry.torrent.state === 'seeding';
           entry.torrent = torrent;
           entry.row.update(torrent);
           const metadataArrived = entry.filesPending && torrent.hasMetadata;
           const retried = wasFailed && torrent.state !== 'error';
+          // The file list marks files Downloading or Downloaded.
+          const finished = !wasSeeding && torrent.state === 'seeding';
           if (
             entry.row.expanded &&
             !entry.loading &&
-            (metadataArrived || retried)
+            (metadataArrived || retried || finished)
           ) {
             void loadFiles(entry);
           }

@@ -362,6 +362,10 @@ h2 {
   color: var(--color-accent-text);
 }
 
+.file-list__tag--download {
+  color: var(--color-state-downloading);
+}
+
 .file-list__tag--warning {
   color: var(--color-state-noPeers);
 }

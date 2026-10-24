@@ -32,6 +32,7 @@ const pendingMagnet = sampleSummary({
   hasMetadata: false,
   ready: false,
   length: null,
+  selectedLength: null,
   progress: 0,
   numPeers: 0,
   downloadSpeed: 0,
@@ -53,6 +54,9 @@ const failed = sampleSummary({
 const seeding = sampleSummary({
   infoHash: '6a9759bffd5c0af65319979fb7832189f4f3c35d',
   name: 'Cosmos Laundromat',
+  // A single-file torrent: everything is selected.
+  length: 1_150_000_000,
+  selectedLength: 1_150_000_000,
   progress: 1,
   downloadSpeed: 0,
   state: 'seeding',
@@ -186,8 +190,27 @@ export const entries: GalleryEntry[] = [
   })),
   {
     component: 'File list',
-    state: 'main file, subtitle, may not play, sample',
+    state: 'main file, subtitle, may not play, sample, downloading',
     render: () => fileList(sampleDetail()),
+  },
+  {
+    component: 'File list',
+    state: 'selection downloaded',
+    render: () => fileList(sampleDetail({ state: 'seeding', progress: 1 })),
+  },
+  {
+    component: 'File list',
+    state: 'every file downloading (no tags)',
+    render: () => {
+      const detail = sampleDetail();
+      return fileList({
+        ...detail,
+        files: (detail.files ?? []).map((file) => ({
+          ...file,
+          selected: true,
+        })),
+      });
+    },
   },
   {
     component: 'Torrent row',

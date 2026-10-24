@@ -62,11 +62,20 @@ describe('torrentList', () => {
     expect(badge.getAttribute('data-tone')).toBe('downloading');
     expect(element.querySelector('progress')?.value).toBe(0.42);
     expect(element.querySelector('.torrent__stats')?.textContent).toBe(
-      '129 MB · 7 peers · ↓ 1.3 MB/s · ↑ 64 kB/s',
+      '129 MB of 231 MB selected · 7 peers · ↓ 1.3 MB/s · ↑ 64 kB/s',
     );
     expect(
       document.querySelector('.torrent-list__empty')?.hasAttribute('hidden'),
     ).toBe(true);
+  });
+
+  it('shows one size when every file downloads', () => {
+    const { list } = setup();
+    list.update([sampleSummary({ length: 1000, selectedLength: 1000 })]);
+
+    expect(row().element.querySelector('.torrent__stats')?.textContent).toBe(
+      '1.0 kB · 7 peers · ↓ 1.3 MB/s · ↑ 64 kB/s',
+    );
   });
 
   it('shows the info hash and unknown size while metadata is pending', () => {
@@ -146,9 +155,33 @@ describe('torrentList', () => {
       expect(files.querySelector('[data-index="3"]')?.textContent).toContain(
         'Sample',
       );
+      const downloading = [...files.querySelectorAll('.file-list__item')]
+        .filter((item) => item.textContent?.includes('Downloading'))
+        .map((item) => item.getAttribute('data-index'));
+      expect(downloading).toEqual(['0', '1']);
 
       list.update([sampleSummary({ progress: 0.6 })]);
       expect(api.getTorrent).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads the files once the selection has downloaded', async () => {
+      const { api, list } = setup();
+      list.update([sampleSummary()]);
+      const { toggle, files } = row();
+      toggle.click();
+      await vi.waitFor(() =>
+        expect(files.textContent).toContain('Downloading'),
+      );
+
+      api.getTorrent.mockResolvedValueOnce(
+        sampleDetail({ state: 'seeding', progress: 1 }),
+      );
+      list.update([sampleSummary({ state: 'seeding', progress: 1 })]);
+
+      await vi.waitFor(() => expect(files.textContent).toContain('Downloaded'));
+      expect(files.textContent).not.toContain('Downloading');
+      list.update([sampleSummary({ state: 'seeding', progress: 1 })]);
+      expect(api.getTorrent).toHaveBeenCalledTimes(2);
     });
 
     it("doesn't fetch anything for a collapsed row", () => {

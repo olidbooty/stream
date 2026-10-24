@@ -226,6 +226,7 @@ describe('addTorrent and removeTorrent', () => {
       '/srv/downloads',
     ) as unknown as FakeTorrent;
     expect(torrent.path).toBe('/srv/downloads');
+    expect(torrent.deselect).toBe(true);
     expect(torrent.listenerCount('error')).toBe(1);
 
     await removeTorrent(client, MAGNET);

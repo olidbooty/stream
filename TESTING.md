@@ -134,7 +134,12 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
   on disk, then call `torrent.simulateReady()`
 - `torrent.simulateDownload(bytes, { downloadSpeed, numPeers })` emits `download`
 - `torrent.simulateWire()` connects a peer: adds one to `numPeers` and emits `wire`
-- `torrent.simulateDone()` emits `done`
+- `torrent.simulateFileDownload(index, bytes)` adds bytes to one file
+  (`file.downloaded`, `file.progress`) and the torrent; the file is `done`
+  once all its bytes are in, and the torrent once every file is. Use it
+  where progress or `seeding` over the selection matters (Decisions #18
+  and #23)
+- `torrent.simulateDone()` marks every file and the torrent done and emits `done`
 - `torrent.simulateNoPeers(source)` emits `noPeers` with `'tracker'`, `'dht'`,
   `'lsd'` or `'ut_pex'`
 - `torrent.simulateError(err)` fails the torrent as the real client does: it
@@ -160,7 +165,9 @@ The fake also records what the server passes in: `client.opts` (ports,
 `tracker.wrtc`), `torrent.path` from `add()`'s `path` option, and
 `torrent.storeDestroyed`, which is `true` when removing or destroying the
 torrent would have deleted its files (`destroyStore` or
-`destroyStoreOnDestroy`). Like the real client, `get()` and `remove()` are
+`destroyStoreOnDestroy`), and `torrent.deselect`. A torrent added with
+`deselect: true` starts with every `file.selected` false until `file.select()`;
+`selected` is fake-only, as the real file doesn't expose it. Like the real client, `get()` and `remove()` are
 async and `remove()` rejects for an unknown torrent, so `await` them.
 
 `add()` takes the info hash from a parsed torrent (what the API passes) or a

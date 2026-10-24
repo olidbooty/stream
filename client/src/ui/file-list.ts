@@ -5,8 +5,24 @@ import type {
 import { formatBytes } from '../format.js';
 import { el } from './dom.js';
 
-function tags(file: TorrentFileInfo, isMain: boolean): HTMLElement[] {
+// Set when only some files download (Decision #18); a torrent that downloads
+// everything doesn't need every file marked.
+type Download = 'Downloading' | 'Downloaded' | null;
+
+function tags(
+  file: TorrentFileInfo,
+  isMain: boolean,
+  download: Download,
+): HTMLElement[] {
   const result: HTMLElement[] = [];
+  if (download && file.selected) {
+    result.push(
+      el('span', {
+        className: 'file-list__tag file-list__tag--download',
+        text: download,
+      }),
+    );
+  }
   if (isMain) {
     result.push(
       el('span', {
@@ -32,12 +48,19 @@ function tags(file: TorrentFileInfo, isMain: boolean): HTMLElement[] {
 }
 
 // A torrent's files in torrent order, with the file the player will pick
-// marked (3.1's mainFile) and videos the browser may refuse flagged.
+// marked (3.1's mainFile), the files being downloaded marked when that isn't
+// all of them, and videos the browser may refuse flagged.
 export function fileList(
-  detail: Pick<TorrentDetail, 'files' | 'mainFile'>,
+  detail: Pick<TorrentDetail, 'files' | 'mainFile' | 'state'>,
 ): HTMLUListElement {
   const list = el('ul', { className: 'file-list' });
-  for (const file of detail.files ?? []) {
+  const files = detail.files ?? [];
+  const download: Download = files.every((file) => file.selected)
+    ? null
+    : detail.state === 'seeding'
+      ? 'Downloaded'
+      : 'Downloading';
+  for (const file of files) {
     list.append(
       el(
         'li',
@@ -50,7 +73,7 @@ export function fileList(
           className: 'file-list__size',
           text: formatBytes(file.length),
         }),
-        ...tags(file, file.index === detail.mainFile),
+        ...tags(file, file.index === detail.mainFile, download),
       ),
     );
   }

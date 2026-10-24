@@ -22,6 +22,8 @@ export interface Api {
   // Sent as the raw body; the server takes no multipart (Decision #14).
   addTorrentFile(file: Blob): Promise<TorrentSummary>;
   removeTorrent(infoHash: string): Promise<void>;
+  // Starts downloading another video and its subtitles (Decision #18).
+  selectFile(infoHash: string, index: number): Promise<void>;
 }
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -79,6 +81,11 @@ export function createApi(
     },
     async removeTorrent(infoHash) {
       await request(`/${encodeURIComponent(infoHash)}`, { method: 'DELETE' });
+    },
+    async selectFile(infoHash, index) {
+      await request(`/${encodeURIComponent(infoHash)}/files/${index}/select`, {
+        method: 'POST',
+      });
     },
   };
 }

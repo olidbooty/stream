@@ -60,6 +60,15 @@ describe('createApi', () => {
     });
   });
 
+  it('selects another video', async () => {
+    const fetch = stub(new Response(null, { status: 204 }));
+    await createApi(fetch).selectFile(SAMPLE_HASH, 2);
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/torrents/${SAMPLE_HASH}/files/2/select`,
+      { method: 'POST' },
+    );
+  });
+
   it("throws the server's error message with the status", async () => {
     const fetch = stub(
       respond(409, { error: 'This torrent has already been added' }),

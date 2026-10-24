@@ -133,8 +133,9 @@ export function peerTransports(webrtc: boolean): string[] {
 }
 
 // Decision #4: files go in DOWNLOAD_DIR and are deleted when the torrent is removed.
-// Pass a parsed torrent where possible: given a string it can't parse, WebTorrent
-// tries it as a URL or file path.
+// Decision #18: nothing is selected, so nothing downloads until the caller
+// selects files (TorrentSelection). Pass a parsed torrent where possible:
+// given a string it can't parse, WebTorrent tries it as a URL or file path.
 export function addTorrent(
   client: WebTorrent,
   torrentId: string | Uint8Array | ParsedTorrent,
@@ -143,6 +144,7 @@ export function addTorrent(
   const torrent = client.add(torrentId, {
     path: downloadDir,
     destroyStoreOnDestroy: true,
+    deselect: true,
   });
   // Trackers, the DHT and PEX all hand peers to torrent.addPeer(); repair the
   // addresses bittorrent-tracker garbles before WebTorrent tries them.

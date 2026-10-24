@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type MediaFileInput, mediaKind, selectMedia } from './media.js';
+import {
+  type MediaFileInput,
+  matchSubtitles,
+  mediaKind,
+  selectMedia,
+} from './media.js';
 
 const MB = 1024 * 1024;
 
@@ -236,5 +241,55 @@ describe('selectMedia', () => {
     const input = files(['a.mp4', MB], ['a.mp4', MB]);
 
     expect(selectMedia(input).videos).toEqual([0, 1]);
+  });
+});
+
+describe('matchSubtitles', () => {
+  it('matches a subtitle with the same name, with or without a language', () => {
+    const torrent = files(
+      ['Sintel/Sintel.mp4', 100 * MB],
+      ['Sintel/Sintel.srt', 1000],
+      ['Sintel/Sintel.en.srt', 1000],
+      ['Sintel/Sintel.pt_BR.vtt', 1000],
+    );
+    expect(matchSubtitles(torrent, 0)).toEqual([
+      { index: 2, language: 'en' },
+      { index: 3, language: 'pt-br' },
+      { index: 1, language: null },
+    ]);
+  });
+
+  it('finds subtitles in another folder', () => {
+    const torrent = files(
+      ['Sintel/Sintel.mp4', 100 * MB],
+      ['Sintel/Subs/Sintel.de.srt', 1000],
+    );
+    expect(matchSubtitles(torrent, 0)).toEqual([{ index: 1, language: 'de' }]);
+  });
+
+  it('ignores case in names but keeps them apart from other videos', () => {
+    const torrent = files(
+      ['Show/Episode 1.mkv', 100 * MB],
+      ['Show/Episode 2.mkv', 100 * MB],
+      ['Show/episode 1.EN.srt', 1000],
+      ['Show/Episode 2.srt', 1000],
+    );
+    expect(matchSubtitles(torrent, 0)).toEqual([{ index: 2, language: 'en' }]);
+    expect(matchSubtitles(torrent, 1)).toEqual([{ index: 3, language: null }]);
+  });
+
+  it('skips near misses and files that are not subtitles', () => {
+    const torrent = files(
+      ['Sintel.mp4', 100 * MB],
+      ['Sintel 2.srt', 1000],
+      ['Sintel.english.srt', 1000],
+      ['Sintel.en.txt', 1000],
+      ['Sintel.nfo', 1000],
+    );
+    expect(matchSubtitles(torrent, 0)).toEqual([]);
+  });
+
+  it('returns nothing for an unknown index', () => {
+    expect(matchSubtitles(files(['Sintel.srt', 1000]), 5)).toEqual([]);
   });
 });

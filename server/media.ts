@@ -147,3 +147,51 @@ export function selectMedia<F extends MediaFileInput>(
     videos: ordered.map((file) => file.index),
   };
 }
+
+export interface SubtitleMatch {
+  index: number;
+  // Lower-case language code from the file name ("en", "pt-br"), or null.
+  language: string | null;
+}
+
+// "en", "eng", "pt-BR" or "pt_BR" between the video's name and the extension.
+const LANGUAGE = /^[a-z]{2,3}([-_][a-z0-9]{2,8})?$/i;
+
+function withoutExtension(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+// Decision #20: a subtitle belongs to a video when its name is the video's
+// name, optionally followed by a language code: "Sintel.srt" and
+// "Sintel.en.srt" both go with "Sintel.mp4". Folders are ignored, so
+// "Subs/Sintel.en.srt" matches too. Returned in path order.
+export function matchSubtitles<F extends MediaFileInput>(
+  files: readonly F[],
+  videoIndex: number,
+): SubtitleMatch[] {
+  const video = files.find((file) => file.index === videoIndex);
+  if (!video) return [];
+  const base = withoutExtension(video.name).toLowerCase();
+  const matches: (SubtitleMatch & { path: string })[] = [];
+  for (const file of files) {
+    if (mediaKind(file.name) !== 'subtitle') continue;
+    const stem = withoutExtension(file.name);
+    if (stem.toLowerCase() === base) {
+      matches.push({ index: file.index, language: null, path: file.path });
+      continue;
+    }
+    const dot = stem.lastIndexOf('.');
+    if (dot <= 0 || stem.slice(0, dot).toLowerCase() !== base) continue;
+    const code = stem.slice(dot + 1);
+    if (!LANGUAGE.test(code)) continue;
+    matches.push({
+      index: file.index,
+      language: code.toLowerCase().replace('_', '-'),
+      path: file.path,
+    });
+  }
+  return matches
+    .sort((a, b) => pathOrder.compare(a.path, b.path) || a.index - b.index)
+    .map(({ index, language }) => ({ index, language }));
+}

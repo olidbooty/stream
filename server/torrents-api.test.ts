@@ -256,7 +256,8 @@ describe('/api/torrents', () => {
         name: 'Sintel',
         files: [{ name: 'sintel.mp4', length: 1000 }],
       });
-      torrent.simulateDownload(250, { downloadSpeed: 500, numPeers: 3 });
+      torrent.simulateFileDownload(0, 250);
+      torrent.simulateDownload(0, { downloadSpeed: 500, numPeers: 3 });
 
       const res = await request(app).get('/api/torrents');
 
@@ -268,6 +269,7 @@ describe('/api/torrents', () => {
           hasMetadata: true,
           ready: true,
           length: 1000,
+          selectedLength: 1000,
           progress: 0.25,
           numPeers: 3,
           downloadSpeed: 500,
@@ -417,6 +419,7 @@ describe('/api/torrents', () => {
           name: 'Sintel.mp4',
           path: 'Sintel/Sintel.mp4',
           length: 129241752,
+          selected: true,
           media: 'video',
           sample: false,
         },
@@ -425,6 +428,7 @@ describe('/api/torrents', () => {
           name: 'Sintel.en.srt',
           path: 'Sintel/Sintel.en.srt',
           length: 1652,
+          selected: true,
           media: 'subtitle',
           sample: false,
         },
@@ -433,6 +437,7 @@ describe('/api/torrents', () => {
           name: 'poster.jpg',
           path: 'Sintel/poster.jpg',
           length: 46115,
+          selected: false,
           media: 'other',
           sample: false,
         },
@@ -454,6 +459,7 @@ describe('/api/torrents', () => {
           name: 'bunny.mp4',
           path: 'bunny.mp4',
           length: 1000,
+          selected: true,
           media: 'video',
           sample: false,
         },
@@ -979,6 +985,111 @@ describe('/api/torrents', () => {
           })(),
         ).rejects.toThrow();
       });
+    });
+  });
+
+  // Decisions #18 and #23.
+  describe('selection', () => {
+    const SEASON = [
+      { name: 'Episode 1.mp4', path: 'Show/Episode 1.mp4', length: 1000 },
+      { name: 'Episode 1.en.srt', path: 'Show/Episode 1.en.srt', length: 10 },
+      { name: 'Episode 2.mp4', path: 'Show/Episode 2.mp4', length: 1000 },
+      { name: 'Episode 2.en.srt', path: 'Show/Episode 2.en.srt', length: 10 },
+      { name: 'poster.jpg', path: 'Show/poster.jpg', length: 100 },
+    ];
+    const selectedFiles = () =>
+      client.torrents[0].files.map((file) => file.selected);
+    const detail = async () =>
+      (await request(app).get(`/api/torrents/${HASH}`)).body;
+
+    beforeEach(async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+    });
+
+    it('downloads only the main video and its subtitles', async () => {
+      const torrent = client.torrents[0];
+      expect(torrent.deselect).toBe(true);
+      expect((await detail()).selectedLength).toBeNull();
+
+      torrent.simulateMetadata({ name: 'Show', files: SEASON });
+
+      expect(selectedFiles()).toEqual([true, true, false, false, false]);
+      const body = await detail();
+      expect(body.selectedLength).toBe(1010);
+      expect(body.length).toBe(2120);
+      expect(body.files.map((file: TorrentFileInfo) => file.selected)).toEqual([
+        true,
+        true,
+        false,
+        false,
+        false,
+      ]);
+    });
+
+    it('measures progress over the selection and seeds once it is done', async () => {
+      const torrent = client.torrents[0];
+      torrent.simulateMetadata({ name: 'Show', files: SEASON });
+      torrent.simulateWire();
+
+      torrent.simulateFileDownload(0, 505);
+      expect(await detail()).toMatchObject({
+        progress: 0.5,
+        state: 'downloading',
+      });
+
+      torrent.simulateFileDownload(0, 495);
+      torrent.simulateFileDownload(1, 10);
+      expect(torrent.done).toBe(false);
+      expect(await detail()).toMatchObject({ progress: 1, state: 'seeding' });
+    });
+
+    it('downloads everything in a torrent with no video', async () => {
+      client.torrents[0].simulateMetadata({
+        name: 'Album',
+        files: [
+          { name: '01.flac', length: 100 },
+          { name: 'cover.jpg', length: 10 },
+        ],
+      });
+
+      expect(selectedFiles()).toEqual([true, true]);
+      expect((await detail()).selectedLength).toBe(110);
+    });
+
+    it('selects another video and its subtitles, keeping the first', async () => {
+      client.torrents[0].simulateMetadata({ name: 'Show', files: SEASON });
+
+      const res = await request(app).post(
+        `/api/torrents/${HASH}/files/2/select`,
+      );
+
+      expect(res.status).toBe(204);
+      expect(selectedFiles()).toEqual([true, true, true, true, false]);
+      expect((await detail()).selectedLength).toBe(2020);
+    });
+
+    it('selects only videos', async () => {
+      client.torrents[0].simulateMetadata({ name: 'Show', files: SEASON });
+
+      const subtitle = await request(app).post(
+        `/api/torrents/${HASH}/files/3/select`,
+      );
+      const missing = await request(app).post(
+        `/api/torrents/${HASH}/files/9/select`,
+      );
+
+      expect(subtitle.status).toBe(400);
+      expect(subtitle.body).toEqual({ error: 'Only a video can be selected' });
+      expect(missing.status).toBe(404);
+      expect(selectedFiles()).toEqual([true, true, false, false, false]);
+    });
+
+    it('returns 409 until the file list is known', async () => {
+      const res = await request(app).post(
+        `/api/torrents/${HASH}/files/0/select`,
+      );
+
+      expect(res.status).toBe(409);
     });
   });
 

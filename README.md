@@ -96,7 +96,9 @@ Open the server's URL in a browser on any device on your network. Paste a
 magnet link or pick a `.torrent` file to add a torrent. The list below
 updates live with each torrent's state, progress, size, peers and speeds;
 expand a torrent to see its files, with the one the player will pick marked
-as the main file. **Remove** asks first, because it deletes the downloaded
+as the main file. Only that video and its subtitles download, so a torrent's
+size reads like `1.4 GB of 2.1 GB selected` when it has extras, and the files
+being downloaded are marked. **Remove** asks first, because it deletes the downloaded
 files, and a failed torrent has **Retry**, which adds it again.
 
 If the page loses its live connection, a red message above the list says so
@@ -108,12 +110,13 @@ The page uses this API, and scripts can too:
 
 | Request | What it does |
 | ------- | ------------ |
-| `GET /api/torrents` | List torrents: info hash, name, magnet link, `hasMetadata`, `ready`, total `length`, progress, peers, speeds, `state` and `errorMessage` |
+| `GET /api/torrents` | List torrents: info hash, name, magnet link, `hasMetadata`, `ready`, total `length`, `selectedLength` (bytes being downloaded), `progress` (over the selected files), peers, speeds, `state` and `errorMessage` |
 | `GET /api/torrents/events` | The same list as a [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream of `torrents` events: sent at once, then whenever it changes, at most once a second. At most 32 streams are open at once; above that it answers `503` with `Retry-After: 10` |
-| `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length, `media`, `sample`), the `mainFile` to play and the `videos` to list. While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files`, `length`, `mainFile` and `videos` are `null`. For a failed torrent `files`, `mainFile` and `videos` are `null` |
+| `GET /api/torrents/:infoHash` | One torrent, plus its `files` (index, name, path, length, `selected`, `media`, `sample`), the `mainFile` to play and the `videos` to list. While a magnet link's metadata is still coming from peers, `hasMetadata` is `false` and `files`, `length`, `mainFile` and `videos` are `null`. For a failed torrent `files`, `mainFile` and `videos` are `null` |
 | `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
 | `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
 | `GET /api/torrents/:infoHash/files/:index/stream` | The file's bytes, for `<video src>`. Honours `Range` (`206` with `Content-Range`, `416` past the end), so playback and seeking start before the download finishes. `409` while the metadata is pending or for a failed torrent, `404` for an unknown file. Video, audio and `.vtt` files are served inline; anything else as a download (`application/octet-stream`) |
+| `POST /api/torrents/:infoHash/files/:index/select` | Start downloading another video and its subtitles, keeping what was already selected. `204`, `400` if the file isn't a video, `409` while the metadata is pending or for a failed torrent, `404` for an unknown file |
 | `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files, or clear a failed one. `204`, or `404` if it isn't there |
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
 
@@ -137,7 +140,7 @@ sends it, and with no peers it stays pending (`state` turns to `noPeers`).
 | ------- | ------- |
 | `connecting` | Looking for peers, fetching a magnet link's metadata, or checking data already on disk |
 | `downloading` | Has its metadata and at least one peer |
-| `seeding` | Finished: every file is downloaded. It keeps uploading while it is listed |
+| `seeding` | Finished: every selected file is downloaded. It keeps uploading while it is listed |
 | `noPeers` | No peer connected for about 30 seconds or more. It keeps looking until you remove it |
 | `error` | It failed, and WebTorrent stopped it and deleted its files. `errorMessage` says why; `files` is `null`. It stays listed until you delete it or add it again to retry |
 
@@ -154,6 +157,8 @@ Only the extension is checked (case-insensitive), not the codecs inside.
 `sample` is `true` for a video that looks like a short sample clip.
 `mainFile` is the index of the video to play by default, or `null` if there
 is none; `videos` lists the index of every video in the order to show them.
+Only `mainFile` and its subtitles are `selected` at first, or every file of a
+torrent with no video; the rest are fetched only while they are streamed.
 How they are chosen is in
 [ARCHITECTURE.md](ARCHITECTURE.md#choosing-the-media-file).
 

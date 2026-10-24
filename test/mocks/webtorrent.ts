@@ -79,6 +79,8 @@ export interface FakeTorrentOptions {
   // The real add() options the server passes (Decision #4).
   path?: string;
   destroyStoreOnDestroy?: boolean;
+  // Start with no file selected, so nothing downloads until select() (Decision #18).
+  deselect?: boolean;
 }
 
 export interface FakeDestroyOptions {
@@ -91,6 +93,9 @@ export class FakeFile {
   length: number;
   downloaded = 0;
   progress = 0;
+  // Every piece is on disk. Like the real file, an empty file is done at once.
+  done: boolean;
+  // Fake-only: the real file doesn't expose whether it is selected.
   selected = true;
   type: string;
   available: number;
@@ -110,6 +115,7 @@ export class FakeFile {
     this.length = length;
     this.type = type;
     this.available = available;
+    this.done = length === 0;
   }
 
   // Like the real file, a falsy `end` (including 0) reads to the end of the
@@ -156,6 +162,7 @@ export class FakeTorrent extends EventEmitter {
   infoHash: string;
   path: string | undefined;
   destroyStoreOnDestroy: boolean;
+  deselect: boolean;
   magnetURI: string;
   name: string | undefined = undefined;
   files: FakeFile[] = [];
@@ -180,6 +187,7 @@ export class FakeTorrent extends EventEmitter {
       infoHash = infoHashOf(torrentId) ?? DEFAULT_INFO_HASH,
       path,
       destroyStoreOnDestroy = false,
+      deselect = false,
     }: FakeTorrentOptions = {},
   ) {
     super();
@@ -187,6 +195,7 @@ export class FakeTorrent extends EventEmitter {
     this.infoHash = infoHash;
     this.path = path;
     this.destroyStoreOnDestroy = destroyStoreOnDestroy;
+    this.deselect = deselect;
     this.magnetURI =
       typeof torrentId === 'string'
         ? torrentId
@@ -209,6 +218,7 @@ export class FakeTorrent extends EventEmitter {
     this.files = files.map((file) =>
       file instanceof FakeFile ? file : new FakeFile(file),
     );
+    for (const file of this.files) file.selected = !this.deselect;
     this.length = this.files.reduce((total, file) => total + file.length, 0);
     this.metadata = new Uint8Array(0);
     this.emit('metadata');
@@ -234,7 +244,28 @@ export class FakeTorrent extends EventEmitter {
     this.emit('download', bytes);
   }
 
+  // Bytes of one file arrive. The file is done once all of its bytes are in,
+  // and the torrent once every file is.
+  simulateFileDownload(index: number, bytes: number): void {
+    const file = this.files[index];
+    const added = Math.min(bytes, file.length - file.downloaded);
+    file.downloaded += added;
+    file.progress = file.length ? file.downloaded / file.length : 0;
+    if (!file.done && file.downloaded === file.length) {
+      file.done = true;
+    }
+    this.simulateDownload(added);
+    if (!this.done && this.files.every((each) => each.done)) {
+      this.simulateDone();
+    }
+  }
+
   simulateDone(): void {
+    for (const file of this.files) {
+      file.downloaded = file.length;
+      file.progress = 1;
+      file.done = true;
+    }
     this.downloaded = this.length;
     this.progress = 1;
     this.done = true;

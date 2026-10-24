@@ -253,4 +253,48 @@ describe('WebTorrent mock', () => {
     stream.destroy();
     expect(stream.destroyed).toBe(true);
   });
+
+  it('starts with no file selected when added with deselect', () => {
+    const client = createClient();
+    const torrent = client.add(MAGNET, { deselect: true });
+    torrent.simulateMetadata({
+      files: [
+        { name: 'a.mp4', length: 10 },
+        { name: 'b.mp4', length: 10 },
+      ],
+    });
+
+    expect(torrent.files.map((file) => file.selected)).toEqual([false, false]);
+    torrent.files[1].select();
+    expect(torrent.files.map((file) => file.selected)).toEqual([false, true]);
+  });
+
+  it('downloads file by file and finishes the torrent with the last one', () => {
+    const torrent = createClient().add(MAGNET);
+    torrent.simulateMetadata({
+      files: [
+        { name: 'a.mp4', length: 100 },
+        { name: 'a.srt', length: 10 },
+        { name: 'empty.txt', length: 0 },
+      ],
+    });
+    expect(torrent.files.map((file) => file.done)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+
+    torrent.simulateFileDownload(1, 50);
+    expect(torrent.files[1]).toMatchObject({
+      downloaded: 10,
+      progress: 1,
+      done: true,
+    });
+    expect(torrent.downloaded).toBe(10);
+    expect(torrent.done).toBe(false);
+
+    torrent.simulateFileDownload(0, 100);
+    expect(torrent.done).toBe(true);
+    expect(torrent.progress).toBe(1);
+  });
 });

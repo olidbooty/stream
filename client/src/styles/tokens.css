@@ -60,9 +60,13 @@
   --width-dialog: 28rem;
   --width-field: 18rem;
   --width-file-path: 16rem;
+  /* The player's video never takes more than this share of the window's height */
+  --height-video: 75vh;
 
   /* Overlays and dimming */
   --color-backdrop: rgb(0 0 0 / 0.45);
+  /* Letterboxing around a video, in either theme */
+  --color-video-backdrop: #000000;
   --opacity-disabled: 0.55;
   --opacity-stale: 0.6;
 }

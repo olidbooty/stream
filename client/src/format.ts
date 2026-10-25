@@ -53,3 +53,33 @@ export function stateLabel(
       return { tone: 'error', label: 'Failed' };
   }
 }
+
+// A subtitle track's name in the player's menu: the language's English name
+// from its code ("pt-br" → "Portuguese (Brazil)"), or the code itself if the
+// browser doesn't know it.
+export function trackLabel(language: string | null): string {
+  if (!language) return 'Subtitles';
+  try {
+    return (
+      new Intl.DisplayNames(['en'], { type: 'language' }).of(language) ??
+      language
+    );
+  } catch {
+    return language;
+  }
+}
+
+// The line under the player: how the download behind it is doing.
+export function playerStats(
+  torrent: Pick<
+    TorrentSummary,
+    'numPeers' | 'downloadSpeed' | 'progress' | 'state'
+  >,
+): string {
+  const peers = `${torrent.numPeers} ${torrent.numPeers === 1 ? 'peer' : 'peers'}`;
+  const done =
+    torrent.state === 'seeding'
+      ? 'Downloaded'
+      : `${formatPercent(torrent.progress)} downloaded`;
+  return [done, peers, `↓ ${formatSpeed(torrent.downloadSpeed)}`].join(' · ');
+}

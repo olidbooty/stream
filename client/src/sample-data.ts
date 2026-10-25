@@ -21,6 +21,7 @@ export function sampleSummary(
     length: 231_243_404,
     selectedLength: 129_243_404,
     progress: 0.42,
+    mainFile: 1,
     numPeers: 7,
     downloadSpeed: 1_250_000,
     uploadSpeed: 64_000,
@@ -44,6 +45,7 @@ export function sampleDetail(
         selected: true,
         media: 'subtitle',
         sample: false,
+        subtitles: [],
       },
       {
         index: 1,
@@ -53,6 +55,7 @@ export function sampleDetail(
         selected: true,
         media: 'video',
         sample: false,
+        subtitles: [{ index: 0, language: 'de' }],
       },
       {
         index: 2,
@@ -62,6 +65,7 @@ export function sampleDetail(
         selected: false,
         media: 'video-may-not-play',
         sample: false,
+        subtitles: [],
       },
       {
         index: 3,
@@ -71,9 +75,9 @@ export function sampleDetail(
         selected: false,
         media: 'video',
         sample: true,
+        subtitles: [],
       },
     ],
-    mainFile: 1,
     videos: [1, 2, 3],
     ...overrides,
   };

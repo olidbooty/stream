@@ -2,6 +2,8 @@ import './styles/tokens.css';
 import './styles/components.css';
 import { createApi } from './api.js';
 import { STATUS_MESSAGES, startLiveUpdates } from './live-updates.js';
+import { createPlayer } from './player.js';
+import { parsePlayRoute } from './player-route.js';
 import { torrentForm } from './torrent-form.js';
 import { torrentList } from './torrent-list.js';
 import { confirmDialog } from './ui/confirm-dialog.js';
@@ -30,16 +32,31 @@ const list = torrentList({
   onChanged: () => void refresh(),
 });
 
-app.append(
-  torrentForm({ api, onAdded: () => void refresh() }),
-  banner.element,
-  list.element,
-);
+const player = createPlayer({ api });
+const form = torrentForm({ api, onAdded: () => void refresh() });
+
+app.append(form, banner.element, list.element, player.element);
+
+// Two views: the list, or the player at #play/<infoHash>/<index>. The live
+// list keeps running under the player, which shows its stats.
+function route(): void {
+  const play = parsePlayRoute(location.hash);
+  form.hidden = play !== null;
+  list.element.hidden = play !== null;
+  player.element.hidden = play === null;
+  if (play) void player.open(play);
+  else player.close();
+}
+window.addEventListener('hashchange', route);
+route();
 
 startLiveUpdates({
   createEventSource: (url) => new EventSource(url),
   document,
-  onTorrents: (torrents) => list.update(torrents),
+  onTorrents: (torrents) => {
+    list.update(torrents);
+    player.update(torrents);
+  },
   onStatus: (status) => {
     if (status === 'live') banner.hide();
     else banner.show(STATUS_MESSAGES[status]);

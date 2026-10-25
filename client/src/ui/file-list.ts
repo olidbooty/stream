@@ -3,6 +3,8 @@ import type {
   TorrentFileInfo,
 } from '../../../server/torrents-api.js';
 import { formatBytes } from '../format.js';
+import { playHref } from '../player-route.js';
+import { linkButton } from './button.js';
 import { el } from './dom.js';
 
 // Set when only some files download (Decision #18); a torrent that downloads
@@ -47,11 +49,17 @@ function tags(
   return result;
 }
 
+// Every video can be played, not just the main one (Decision #3).
+function playLink(infoHash: string, file: TorrentFileInfo): HTMLElement[] {
+  if (file.media !== 'video' && file.media !== 'video-may-not-play') return [];
+  return [linkButton({ label: 'Play', href: playHref(infoHash, file.index) })];
+}
+
 // A torrent's files in torrent order, with the file the player will pick
 // marked (3.1's mainFile), the files being downloaded marked when that isn't
 // all of them, and videos the browser may refuse flagged.
 export function fileList(
-  detail: Pick<TorrentDetail, 'files' | 'mainFile' | 'state'>,
+  detail: Pick<TorrentDetail, 'infoHash' | 'files' | 'mainFile' | 'state'>,
 ): HTMLUListElement {
   const list = el('ul', { className: 'file-list' });
   const files = detail.files ?? [];
@@ -74,6 +82,7 @@ export function fileList(
           text: formatBytes(file.length),
         }),
         ...tags(file, file.index === detail.mainFile, download),
+        ...(detail.state === 'error' ? [] : playLink(detail.infoHash, file)),
       ),
     );
   }

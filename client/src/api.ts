@@ -26,6 +26,15 @@ export interface Api {
   selectFile(infoHash: string, index: number): Promise<void>;
 }
 
+// URLs the <video> and <track> elements load themselves.
+export function streamUrl(infoHash: string, index: number): string {
+  return `/api/torrents/${infoHash}/files/${index}/stream`;
+}
+
+export function subtitlesUrl(infoHash: string, index: number): string {
+  return `/api/torrents/${infoHash}/files/${index}/subtitles.vtt`;
+}
+
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 async function errorFrom(res: Response): Promise<ApiError> {

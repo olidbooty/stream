@@ -1,6 +1,7 @@
 import type { TorrentSummary } from '../../../server/torrents-api.js';
 import { formatBytes, formatSpeed, stateLabel } from '../format.js';
-import { button } from './button.js';
+import { playHref } from '../player-route.js';
+import { button, linkButton } from './button.js';
 import { el, uniqueId } from './dom.js';
 import { progressBar, updateProgressBar } from './progress-bar.js';
 import { stateBadge, updateStateBadge } from './state-badge.js';
@@ -71,6 +72,8 @@ export function torrentRow(
     attrs: { role: 'alert' },
   });
   actionError.hidden = true;
+  // Opens the player on the main video; shown once there is one to play.
+  const play = linkButton({ label: 'Play', href: '#', variant: 'primary' });
   const retry = button({ label: 'Retry', onClick: () => actions.onRetry() });
   const remove = button({
     label: 'Remove',
@@ -91,7 +94,7 @@ export function torrentRow(
     statsLine,
     errorLine,
     actionError,
-    el('div', { className: 'torrent__actions' }, retry, remove),
+    el('div', { className: 'torrent__actions' }, play, retry, remove),
     files,
   );
 
@@ -119,6 +122,11 @@ export function torrentRow(
       errorLine.textContent = failed ? (torrent.errorMessage ?? '') : '';
       errorLine.hidden = !failed;
       retry.hidden = !failed;
+      const playable = !failed && torrent.mainFile !== null;
+      play.hidden = !playable;
+      if (playable) {
+        play.href = playHref(torrent.infoHash, torrent.mainFile as number);
+      }
     },
     setFiles(content) {
       files.replaceChildren(content);

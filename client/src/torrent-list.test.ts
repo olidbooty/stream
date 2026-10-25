@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TorrentSummary } from '../../server/torrents-api.js';
 import { ApiError } from './api.js';
-import { sampleDetail, sampleSummary } from './sample-data.js';
+import { SAMPLE_HASH, sampleDetail, sampleSummary } from './sample-data.js';
 import { torrentList } from './torrent-list.js';
 
 const OTHER = 'ffffffffffffffffffffffffffffffffffffffff';
@@ -67,6 +67,23 @@ describe('torrentList', () => {
     expect(
       document.querySelector('.torrent-list__empty')?.hasAttribute('hidden'),
     ).toBe(true);
+  });
+
+  it('offers Play for the main video once there is one', () => {
+    const { list } = setup();
+    const play = () =>
+      [...row().element.querySelectorAll('a')].find(
+        (link) => link.textContent === 'Play',
+      ) as HTMLAnchorElement;
+    list.update([sampleSummary({ mainFile: null, hasMetadata: false })]);
+    expect(play().hidden).toBe(true);
+
+    list.update([sampleSummary()]);
+    expect(play().hidden).toBe(false);
+    expect(play().getAttribute('href')).toBe(`#play/${SAMPLE_HASH}/1`);
+
+    list.update([sampleSummary({ state: 'error' })]);
+    expect(play().hidden).toBe(true);
   });
 
   it('shows one size when every file downloads', () => {
@@ -155,6 +172,14 @@ describe('torrentList', () => {
       expect(files.querySelector('[data-index="3"]')?.textContent).toContain(
         'Sample',
       );
+      const plays = [...files.querySelectorAll('.file-list__item a')].map(
+        (link) => link.getAttribute('href'),
+      );
+      expect(plays).toEqual([
+        `#play/${SAMPLE_HASH}/1`,
+        `#play/${SAMPLE_HASH}/2`,
+        `#play/${SAMPLE_HASH}/3`,
+      ]);
       const downloading = [...files.querySelectorAll('.file-list__item')]
         .filter((item) => item.textContent?.includes('Downloading'))
         .map((item) => item.getAttribute('data-index'));

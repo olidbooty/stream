@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { button } from './button.js';
+import { button, linkButton } from './button.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { field } from './field.js';
 import { progressBar, updateProgressBar } from './progress-bar.js';
 import { stateBadge, updateStateBadge } from './state-badge.js';
 import { statusBanner } from './status-banner.js';
+import { videoPlayer } from './video-player.js';
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -139,5 +140,58 @@ describe('confirmDialog', () => {
     buttons().dialog.close();
     await expect(result).resolves.toBe(false);
     expect(document.querySelector('dialog')).toBeNull();
+  });
+});
+
+describe('linkButton', () => {
+  it('renders a link styled as a button', () => {
+    const link = linkButton({
+      label: 'Play',
+      href: '#play/x/1',
+      variant: 'primary',
+    });
+    expect(link.tagName).toBe('A');
+    expect(link.getAttribute('href')).toBe('#play/x/1');
+    expect(link.className).toBe('button button--primary');
+  });
+});
+
+describe('videoPlayer', () => {
+  it('renders the video, its tracks, a back link and a hidden status', () => {
+    const player = videoPlayer({
+      title: 'Sintel.mp4',
+      src: '/stream',
+      tracks: [
+        { src: '/en.vtt', language: 'en', label: 'English' },
+        { src: '/subs.vtt', language: null, label: 'Subtitles' },
+      ],
+      backHref: '#',
+    });
+    const { element, video } = player;
+
+    expect(video.getAttribute('src')).toBe('/stream');
+    expect(video.hasAttribute('controls')).toBe(true);
+    expect(video.getAttribute('preload')).toBe('metadata');
+    const tracks = [...video.querySelectorAll('track')];
+    expect(tracks.map((t) => t.getAttribute('srclang'))).toEqual(['en', null]);
+    expect(tracks.map((t) => t.getAttribute('kind'))).toEqual([
+      'subtitles',
+      'subtitles',
+    ]);
+    expect(element.querySelector('a')?.getAttribute('href')).toBe('#');
+    expect(element.querySelector('h2')?.textContent).toBe('Sintel.mp4');
+    const status = element.querySelector('[role="status"]') as HTMLElement;
+    expect(status.hidden).toBe(true);
+
+    player.setStatus('Broken', 'error');
+    expect(status.hidden).toBe(false);
+    expect(status.dataset.tone).toBe('error');
+    player.setStatus(null);
+    expect(status.hidden).toBe(true);
+  });
+
+  it('has no source without one', () => {
+    const { video } = videoPlayer({ title: 'x', tracks: [], backHref: '#' });
+    expect(video.hasAttribute('src')).toBe(false);
   });
 });

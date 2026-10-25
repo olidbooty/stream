@@ -92,6 +92,7 @@ describe('TorrentWatch', () => {
       ready: torrent.ready,
       length: torrent.length,
       selectedLength: torrent.length,
+      mainFile: null,
       progress: torrent.progress,
       numPeers: torrent.numPeers,
       downloadSpeed: torrent.downloadSpeed,

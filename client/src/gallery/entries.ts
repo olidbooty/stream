@@ -1,6 +1,6 @@
 import type { TorrentSummary } from '../../../server/torrents-api.js';
 import { ApiError } from '../api.js';
-import { type StateLabel, stateLabel } from '../format.js';
+import { playerStats, type StateLabel, stateLabel } from '../format.js';
 import { STATUS_MESSAGES } from '../live-updates.js';
 import { sampleDetail, sampleSummary } from '../sample-data.js';
 import { torrentForm } from '../torrent-form.js';
@@ -14,6 +14,7 @@ import { progressBar, updateProgressBar } from '../ui/progress-bar.js';
 import { stateBadge, updateStateBadge } from '../ui/state-badge.js';
 import { statusBanner } from '../ui/status-banner.js';
 import { torrentRow } from '../ui/torrent-row.js';
+import { type PlayerStatusTone, videoPlayer } from '../ui/video-player.js';
 
 // One component in one state, rendered from sample data with no server.
 export interface GalleryEntry {
@@ -33,6 +34,7 @@ const pendingMagnet = sampleSummary({
   ready: false,
   length: null,
   selectedLength: null,
+  mainFile: null,
   progress: 0,
   numPeers: 0,
   downloadSpeed: 0,
@@ -107,6 +109,25 @@ function row(
 function expand(r: ReturnType<typeof torrentRow>, content: Node): void {
   r.setFiles(content);
   r.element.querySelector<HTMLButtonElement>('.torrent__toggle')?.click();
+}
+
+// An empty WebVTT file, so the gallery's tracks load without a server.
+const EMPTY_VTT = 'data:text/vtt,WEBVTT';
+
+// The player with no video source: the gallery has no server to stream from.
+function player(
+  status: string | null,
+  tone: PlayerStatusTone = 'info',
+  tracks = [{ src: EMPTY_VTT, language: 'de', label: 'German' }],
+): HTMLElement {
+  const p = videoPlayer({
+    title: 'Sintel.mp4',
+    tracks,
+    backHref: '#',
+  });
+  p.setStatus(status, tone);
+  p.setStats(playerStats(sampleSummary()));
+  return p.element;
 }
 
 function filesNote(text: string): HTMLElement {
@@ -253,6 +274,35 @@ export const entries: GalleryEntry[] = [
           "Couldn't remove it: The server answered 500 Internal Server Error",
         ),
       ),
+  },
+  {
+    component: 'Video player',
+    state: 'loading',
+    render: () => player('Loading…'),
+  },
+  {
+    component: 'Video player',
+    state: 'buffering',
+    render: () => player('Buffering…'),
+  },
+  {
+    component: 'Video player',
+    state: 'waiting for peers',
+    render: () => player('Waiting for data from peers…'),
+  },
+  {
+    component: 'Video player',
+    state: 'playing, two subtitle tracks',
+    render: () =>
+      player(null, 'info', [
+        { src: EMPTY_VTT, language: 'en', label: 'English' },
+        { src: EMPTY_VTT, language: 'pt-br', label: 'Brazilian Portuguese' },
+      ]),
+  },
+  {
+    component: 'Video player',
+    state: 'error',
+    render: () => player("This video can't be played: Sintel.mkv", 'error'),
   },
   ...(['reconnecting', 'unavailable'] as const).map((status) => ({
     component: 'Status banner',

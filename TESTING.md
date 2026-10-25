@@ -85,7 +85,7 @@ pass `createApi()` a fake `fetch` (see `client/src/api.test.ts`).
 `client/src/sample-data.ts` builds torrents shaped like the server's answers;
 its types come from `server/torrents-api.ts`, so they can't drift.
 
-jsdom lacks two browser APIs the page uses:
+jsdom lacks three browser APIs the page uses:
 
 - **`EventSource`.** `startLiveUpdates()` takes a `createEventSource`
   function, so `client/src/live-updates.test.ts` passes a fake that opens,
@@ -93,6 +93,11 @@ jsdom lacks two browser APIs the page uses:
   after which the browser gives up), and switches `document.visibilityState`.
 - **`<dialog>`'s `showModal()` and `close()`.** `client/src/ui/components.test.ts`
   stands in for them on `HTMLDialogElement.prototype`.
+- **Media playback.** jsdom's `<video>` never loads or plays, and `load()` and
+  `pause()` only log "not implemented". `client/src/player.test.ts` stubs
+  them on `HTMLMediaElement.prototype`, dispatches `waiting`, `stalled`,
+  `canplay` and `error` itself, and defines `video.error` for the error code.
+  Real playback, seeking and subtitles are checked by hand in a browser.
 
 Pure functions such as `isMagnetURI()` (`server/magnet.ts`),
 `selectMedia()` (`server/media.ts`) and `filterSources()`

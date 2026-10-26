@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './api.js';
-import { createPlayer, PEER_WAIT_MS } from './player.js';
+import { createPlayer, PEER_WAIT_MS, SLOW_WARN_MS } from './player.js';
 import { SAMPLE_HASH, sampleDetail, sampleSummary } from './sample-data.js';
 
 // jsdom can't play media: load(), pause() and play() only log "not
@@ -17,13 +17,17 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+// The player's clock, for the slow-download warning's delay.
+let clock = 0;
+
 function setup() {
+  clock = 0;
   const api = {
     getTorrent: vi.fn().mockResolvedValue(sampleDetail()),
     selectFile: vi.fn().mockResolvedValue(undefined),
     resumeTorrent: vi.fn().mockResolvedValue(undefined),
   };
-  const player = createPlayer({ api });
+  const player = createPlayer({ api, now: () => clock });
   document.body.append(player.element);
   return { api, player };
 }
@@ -295,6 +299,146 @@ describe('createPlayer', () => {
       fire('error');
 
       expect(status().hidden).toBe(true);
+    });
+  });
+
+  describe('buffer health', () => {
+    const health = () =>
+      document.querySelector('.video-player__health') as HTMLElement;
+    const stats = () =>
+      document.querySelector('.video-player__stats')?.textContent;
+
+    // jsdom's video has no metadata and nothing buffered; these stand in for
+    // a loaded one. Sintel.mp4 is 129 MB, so 1000 s plays at 129 kB/s.
+    function load(ahead: number, currentTime = 100, duration = 1000) {
+      const v = video();
+      Object.defineProperty(v, 'readyState', {
+        configurable: true,
+        value: HTMLMediaElement.HAVE_ENOUGH_DATA,
+      });
+      Object.defineProperty(v, 'duration', {
+        configurable: true,
+        value: duration,
+      });
+      Object.defineProperty(v, 'currentTime', {
+        configurable: true,
+        value: currentTime,
+      });
+      Object.defineProperty(v, 'buffered', {
+        configurable: true,
+        value: {
+          length: 1,
+          start: () => 0,
+          end: () => currentTime + ahead,
+        },
+      });
+    }
+
+    it('shows the seconds buffered ahead once the video has loaded', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      expect(stats()).toBe('42% downloaded · 7 peers · ↓ 1.3 MB/s');
+
+      load(25);
+      fire('progress');
+      expect(stats()).toBe(
+        '42% downloaded · 7 peers · ↓ 1.3 MB/s · 25 s buffered',
+      );
+      expect(health().hidden).toBe(true);
+    });
+
+    it('warns while the download is slower than the video, until it recovers', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      load(5);
+      fire('playing');
+      // 1.3 MB/s is plenty for 129 kB/s.
+      expect(health().hidden).toBe(true);
+
+      player.update([sampleSummary({ downloadSpeed: 50_000 })]);
+      // Only once it has stayed slow for a while.
+      expect(health().hidden).toBe(true);
+      clock += SLOW_WARN_MS - 1;
+      fire('timeupdate');
+      expect(health().hidden).toBe(true);
+      clock += 1;
+      fire('timeupdate');
+      expect(health().hidden).toBe(false);
+      expect(health().getAttribute('role')).toBe('status');
+      expect(health().dataset.tone).toBe('warning');
+      expect(health().textContent).toBe(
+        'Downloading at 50 kB/s of the 129 kB/s it needs, so the video may stop to buffer.',
+      );
+
+      // Not gone at 20 s, only once it is healthy again.
+      load(20);
+      fire('timeupdate');
+      expect(health().hidden).toBe(false);
+      load(30);
+      fire('progress');
+      expect(health().hidden).toBe(true);
+    });
+
+    it('does not warn for a slow spell shorter than SLOW_WARN_MS', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      load(2);
+      fire('playing');
+
+      player.update([sampleSummary({ downloadSpeed: 50_000 })]);
+      clock += SLOW_WARN_MS - 1;
+      player.update([sampleSummary()]);
+      clock += 1;
+      player.update([sampleSummary({ downloadSpeed: 50_000 })]);
+
+      expect(health().hidden).toBe(true);
+    });
+
+    it('does not warn before the video has played', async () => {
+      const { api, player } = setup();
+      api.getTorrent.mockResolvedValueOnce(sampleDetail({ downloadSpeed: 0 }));
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      load(0);
+
+      fire('progress');
+      expect(health().hidden).toBe(true);
+      fire('playing');
+      clock += SLOW_WARN_MS;
+      fire('timeupdate');
+      expect(health().textContent).toContain('no peer is sending data');
+    });
+
+    it('does not warn once every selected file is downloaded', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      load(2);
+      fire('playing');
+
+      player.update([sampleSummary({ downloadSpeed: 0, state: 'seeding' })]);
+
+      expect(health().hidden).toBe(true);
+    });
+
+    it('drops the warning when an error takes over, and after a reload', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      player.update([sampleSummary({ downloadSpeed: 0 })]);
+      load(2);
+      fire('playing');
+      clock += SLOW_WARN_MS;
+      fire('timeupdate');
+      expect(health().hidden).toBe(false);
+
+      Object.defineProperty(video(), 'error', { value: { code: 2 } });
+      fire('error');
+      expect(health().hidden).toBe(true);
+      // Chrome fires `playing` on a failed stream.
+      fire('playing');
+      expect(health().hidden).toBe(true);
+
+      fire('loadstart');
+      fire('progress');
+      expect(health().hidden).toBe(true);
     });
   });
 

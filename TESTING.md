@@ -99,7 +99,11 @@ jsdom lacks three browser APIs the page uses:
   `stalled`, `canplay`, `loadedmetadata` and `error` itself, and defines
   `video.error` for the error code. jsdom's `videoWidth` is always 0, which
   looks like a picture the browser can't decode, so tests that need a picture
-  define it.
+  define it. jsdom's `readyState` is 0 and `buffered` is empty, so the buffer
+  health tests (step 3.5) define `readyState`, `duration`, `currentTime` and
+  `buffered` on the element, and pass `createPlayer()` a `now` clock for the
+  slow-download warning's delay. The arithmetic itself is pure
+  (`client/src/buffer-health.ts`).
   Real playback, seeking and subtitles are checked by hand in a browser.
 
 Pure functions such as `isMagnetURI()` (`server/magnet.ts`),
@@ -242,6 +246,18 @@ hand:
 6. Restart the server with Ctrl+C and `npm start` while a torrent is part
    downloaded. It should come back with the same progress, selected files
    and paused state, and its files should still be in `DOWNLOAD_DIR`.
+
+7. To see how playback copes when peers slow down (step 3.5), seed a file
+   you made from a second WebTorrent client on the same machine with the
+   DHT, trackers and LSD off, and add it with a magnet carrying
+   `x.pe=127.0.0.1:<its port>`. Change the seeder's speed with
+   `client.throttleUpload(bytesPerSecond)` during playback (`-1` removes the
+   limit): above the video's bitrate the stats line's "buffered" figure
+   stays up; below it the warning line appears before the video stops to
+   buffer; at 0 the status turns to "Waiting for data from peers". An
+   ffmpeg test clip works, for example `ffmpeg -f lavfi -i
+   testsrc2=size=640x360:rate=25 -f lavfi -i sine -t 240 -c:v libvpx -b:v
+   1200k -c:a libopus Clip.webm`.
 
 Real peer tests use your network and upload to the swarm (see
 [ARCHITECTURE.md](ARCHITECTURE.md#seeding)). Remove test torrents afterwards

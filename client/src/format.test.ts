@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatAhead,
   formatBytes,
   formatPercent,
   formatSpeed,
@@ -107,5 +108,27 @@ describe('playerStats', () => {
         state: 'seeding',
       }),
     ).toBe('Downloaded · 0 peers · ↓ 0 B/s');
+  });
+
+  it('adds the seconds buffered ahead once known', () => {
+    expect(
+      playerStats(
+        { numPeers: 3, downloadSpeed: 0, progress: 0.5, state: 'downloading' },
+        12.7,
+      ),
+    ).toBe('50% downloaded · 3 peers · ↓ 0 B/s · 12 s buffered');
+  });
+});
+
+describe('formatAhead', () => {
+  it.each([
+    [0, '0 s'],
+    [12.9, '12 s'],
+    [60, '1 min'],
+    [125, '2 min 5 s'],
+    [-1, '0 s'],
+    [Number.NaN, '0 s'],
+  ])('%d seconds is %s', (seconds, text) => {
+    expect(formatAhead(seconds)).toBe(text);
   });
 });

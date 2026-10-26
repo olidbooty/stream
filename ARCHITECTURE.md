@@ -443,8 +443,57 @@ but moves it:
   directory), passed as the `path` option to `client.add()` by `addTorrent()`.
 - Removing a torrent deletes its files: `addTorrent()` sets
   `destroyStoreOnDestroy: true` and `removeTorrent()` passes
-  `destroyStore: true`.
+  `destroyStore: true`. So does a torrent failing (Decision #22).
+- Shutting down keeps them. `client.destroy()` would destroy every torrent
+  with `destroyStoreOnDestroy` and delete every download, so
+  `destroyTorrentClient()` first destroys each torrent with
+  `destroyStore: false`.
+- The torrent list survives a restart; see
+  [Restoring torrents after a restart](#restoring-torrents-after-a-restart).
 - A limit on the directory's total size comes in 4.3.
+
+### Restoring torrents after a restart
+
+Decision #13. `SavedTorrents` (`server/saved-torrents.ts`) keeps one entry
+per torrent in `DOWNLOAD_DIR/.torrents`:
+
+- `<infoHash>.json`: when it was added, its magnet link (after
+  `filterSources()`), whether it is paused and its selected file indexes
+  (`null` until the file list is known).
+- `<infoHash>.torrent`: the metadata, written once it is known (at once for an
+  upload, from peers for a magnet link), so a restored magnet doesn't have to
+  fetch it again.
+
+The router saves the JSON when a torrent is added, when its selection grows
+(`TorrentSelection`'s change callback), and on pause and resume. It deletes
+both files on `DELETE` and when the torrent fails. Writes go through a
+temporary file and `rename()`, run in order per torrent, and only log on
+failure: a torrent that can't be saved still runs. Shutdown waits for pending
+writes.
+
+At startup `start.ts` loads every entry before the HTTP server listens and
+passes them to `createApp()`, which adds them again in the order they were
+first added, through `filterSources()` and `addTorrent()` like a new one:
+
+- **Data on disk.** WebTorrent verifies the pieces already in
+  `DOWNLOAD_DIR`, so the torrent shows "Checking files" for a while (Decision
+  #24) and then carries on from where it was.
+- **Selection.** `TorrentSelection.watch()` selects the saved files once the
+  file list is known instead of choosing again; indexes that no longer exist
+  are dropped, and with none left it chooses as for a new torrent.
+- **Paused.** A paused torrent is paused straight after it is added. A
+  `.torrent` has no `x.pe=` peer addresses, so the magnet's are kept with it,
+  and `resumeTorrent()` dials them, since WebTorrent ignored them while
+  paused.
+- **Unreadable entries** (bad JSON, a magnet for another info hash, anything
+  that isn't a magnet link) are logged, skipped and left on disk. An
+  unreadable `.torrent` falls back to the magnet link.
+
+`.torrents` sits inside `DOWNLOAD_DIR`, so a torrent whose top folder is
+named `.torrents` could overwrite an entry. That is accepted: entries are
+validated like API input, so the worst it can do is add or drop a torrent,
+which anyone on the LAN can already do (Decision #12). Deleting files that no
+saved torrent owns, and the size limit, come in 4.3.
 
 ### Streaming
 
@@ -553,7 +602,7 @@ design stays next to the code.
 | 10 | Native modules without prebuilt binaries | Decided | Support Linux x64, macOS, Windows and Raspberry Pi. 2.6 adds a startup check: without `utp-native` the client logs that it is TCP-only; if `node-datachannel` fails to load it runs without WebRTC instead of crashing. The README lists the build tools needed on ARM |
 | 11 | Torrents make the server contact hosts the adder chose | Decided | Strip a magnet's `xs=` URL before `client.add()`. Drop tracker and web seed URLs that aren't http(s)/udp/wss or whose host is localhost or a literal loopback, private, link-local or unspecified IP. Hostnames that resolve to LAN addresses still pass. Implemented in 2.6, before 2.5. See [Network exposure](#network-exposure) |
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
-| 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` (the magnet until metadata arrives), delete it on removal, re-add them all at startup, then delete files no saved torrent owns. Part of 4.3 |
+| 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` (the magnet until metadata arrives), delete it on removal, re-add them all at startup, then delete files no saved torrent owns. Saving and restoring, with the selection and paused state, implemented in 4.3a (split from 4.3); shutdown no longer deletes downloads. Deleting unowned files stays in 4.3. See [Restoring torrents after a restart](#restoring-torrents-after-a-restart) |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |
@@ -562,7 +611,7 @@ design stays next to the code.
 | 19 | Main-file heuristics are unproven | Decided | Accepted for now: a sample is under 25% of the largest video, main-sized is at least a third. `.ts` (MPEG-TS) also matches TypeScript sources, and video inside `.rar`/`.zip` isn't found. Revisit after the manual tests with real torrents. See [Choosing the media file](#choosing-the-media-file) |
 | 20 | Subtitles need work before playback | Decided | Serve `.vtt` as is and convert `.srt` to WebVTT on the server (UTF-8, falling back to Windows-1252). Match subtitles to a video by file name with an optional language code (`Sintel.en.srt` → `Sintel.mp4`, `en`). No `.ass`/`.ssa` or embedded MKV subtitles in M4. Implemented in 3.4: `GET .../files/:index/subtitles.vtt` (`server/subtitles.ts`) serves them, files above 2 MiB get `413`, and the player adds one `<track>` per match |
 | 21 | Event stream connections per browser | Decided | One stream per page, closed while the tab is hidden and reopened when it is shown, so background tabs hold no connection; the server caps open streams at 32 (`503` above). HTTP/2 is ruled out because browsers only use it over HTTPS. Implemented in 2.5 |
-| 22 | Failed torrents | Decided | Kept in memory with `state: 'error'` until deleted or re-added, at most 50, lost on restart like #13. WebTorrent has already deleted their files, so a retry starts from zero. See [State and events](#state-and-events) |
+| 22 | Failed torrents | Decided | Kept in memory with `state: 'error'` until deleted or re-added, at most 50, not restored after a restart. WebTorrent has already deleted their files, so a retry starts from zero. See [State and events](#state-and-events) |
 | 23 | `seeding` needs every file | Decided | Progress and state follow the selection (#18): progress is computed from the selected files and `seeding` means every selected file is done, instead of `torrent.done`/`torrent.progress`, which count every file. Implemented in 3.3 |
 | 24 | State timing | Decided | Accepted: a new torrent shows `connecting` for about 30 s before `noPeers` (WebTorrent's fixed check interval), and verifying existing data also shows as `connecting`; the UI can tell that apart with `hasMetadata && !ready` |
 | 25 | Tracker peer addresses garbled by `bittorrent-tracker` | Decided | Found in the 2.6 real-swarm check. Worked around in our code: `addTorrent()` repairs the addresses before WebTorrent tries them. Remove once fixed upstream. See [Creating the client](#creating-the-client) |

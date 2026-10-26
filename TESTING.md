@@ -142,7 +142,8 @@ from `FakeWebTorrent.instances`, which is typed as the fake. A test that calls
 - `torrent.simulateMetadata({ name, files: [{ name, length, path }] })` sets
   `torrent.metadata`, emits `metadata` and then `ready`. Pass `ready: false`
   to stop after `metadata`, as the real client does while it verifies data
-  on disk, then call `torrent.simulateReady()`
+  on disk, then call `torrent.simulateReady()`. `metadata` sets the
+  `.torrent` bytes it holds (empty by default)
 - `torrent.simulateDownload(bytes, { downloadSpeed, numPeers })` emits `download`
 - `torrent.simulateWire(address, type)` connects a peer: adds a `FakeWire`
   (default `127.0.0.1:688x`, `'tcpOutgoing'`) to `torrent.wires`, adds one to
@@ -238,6 +239,9 @@ hand:
 5. Watch the server log for errors, the browser console, and for M4 steps
    the `<video>` element's `waiting` and `stalled` events. Seek forward to
    check the range requests.
+6. Restart the server with Ctrl+C and `npm start` while a torrent is part
+   downloaded. It should come back with the same progress, selected files
+   and paused state, and its files should still be in `DOWNLOAD_DIR`.
 
 Real peer tests use your network and upload to the swarm (see
 [ARCHITECTURE.md](ARCHITECTURE.md#seeding)). Remove test torrents afterwards

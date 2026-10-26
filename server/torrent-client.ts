@@ -192,7 +192,15 @@ export function pauseTorrent(torrent: Torrent): void {
 export function resumeTorrent(torrent: Torrent): void {
   if (!torrent.paused) return;
   torrent.resume();
-  for (const address of pausedPeers.get(torrent) ?? []) {
+  // A magnet's x.pe= peers too: WebTorrent ignores them while a torrent
+  // restored as paused starts up, and never tries them again.
+  const { peerAddresses = [] } = torrent as Torrent & {
+    peerAddresses?: string[];
+  };
+  for (const address of new Set([
+    ...(pausedPeers.get(torrent) ?? []),
+    ...peerAddresses,
+  ])) {
     torrent.addPeer(address);
   }
   pausedPeers.delete(torrent);
@@ -217,7 +225,21 @@ export function removeTorrent(
 }
 
 // Stops announcing to trackers and the DHT and closes the peer sockets.
-export function destroyTorrentClient(client: WebTorrent): Promise<void> {
+// client.destroy() destroys each torrent with destroyStoreOnDestroy, which
+// would delete every download on shutdown, so the torrents are destroyed
+// first with their files kept for the next start (Decision #13).
+export async function destroyTorrentClient(client: WebTorrent): Promise<void> {
+  await Promise.all(
+    [...client.torrents].map(
+      (torrent) =>
+        new Promise<void>((resolvePromise) => {
+          torrent.destroy({ destroyStore: false }, (err) => {
+            if (err) console.error(`closing torrent ${torrent.infoHash}:`, err);
+            resolvePromise();
+          });
+        }),
+    ),
+  );
   return new Promise((resolvePromise, reject) => {
     client.destroy((err) => (err ? reject(err) : resolvePromise()));
   });

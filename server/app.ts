@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
+import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
 import { torrentsRouter } from './torrents-api.js';
 
 export const DEFAULT_STATIC_DIR = fileURLToPath(
@@ -13,6 +14,9 @@ export interface AppOptions {
   // Where added torrents store their files (DOWNLOAD_DIR).
   downloadDir: string;
   staticDir?: string;
+  // Decision #13: saves torrents across restarts, and those to add again now.
+  saved?: SavedTorrents;
+  restore?: readonly SavedTorrent[];
 }
 
 // Build the Express app without binding a port, so tests can drive it with supertest.
@@ -20,6 +24,8 @@ export function createApp({
   client,
   downloadDir,
   staticDir = DEFAULT_STATIC_DIR,
+  saved,
+  restore,
 }: AppOptions): Express {
   const app = express();
 
@@ -38,7 +44,10 @@ export function createApp({
     });
   });
 
-  app.use('/api/torrents', torrentsRouter({ client, downloadDir }));
+  app.use(
+    '/api/torrents',
+    torrentsRouter({ client, downloadDir, saved, restore }),
+  );
 
   app.use((_req, res) => {
     res.status(404).type('text/plain').send('Not Found');

@@ -87,14 +87,26 @@ export function mediaInputs(torrent: Torrent): MediaFileInput[] {
 // don't say. Weak, so a removed torrent leaves nothing behind.
 export class TorrentSelection {
   private readonly selected = new WeakMap<Torrent, Set<number>>();
+  private readonly onChange: (torrent: Torrent) => void;
+
+  // onChange runs whenever a torrent's selection grows, so it can be saved.
+  constructor(onChange: (torrent: Torrent) => void = () => {}) {
+    this.onChange = onChange;
+  }
 
   // Call right after adding a torrent with `deselect: true`. Selects the
   // initial files as soon as the file list is known: at once if it already
-  // is, otherwise when a magnet link's metadata arrives.
-  watch(torrent: Torrent): void {
+  // is, otherwise when a magnet link's metadata arrives. A torrent restored
+  // after a restart passes the files it had selected instead.
+  watch(torrent: Torrent, restored?: readonly number[] | null): void {
     const start = () => {
       if (this.selected.has(torrent)) return;
-      this.selectFiles(torrent, initialSelection(mediaInputs(torrent)));
+      const files = mediaInputs(torrent);
+      const saved = restored?.filter((index) => index < files.length);
+      this.selectFiles(
+        torrent,
+        saved?.length ? saved : initialSelection(files),
+      );
     };
     if (torrent.metadata) start();
     else torrent.once('metadata', start);
@@ -117,10 +129,12 @@ export class TorrentSelection {
       selected = new Set();
       this.selected.set(torrent, selected);
     }
+    const before = selected.size;
     for (const index of indexes) {
       if (selected.has(index)) continue;
       torrent.files[index]?.select();
       selected.add(index);
     }
+    if (selected.size !== before) this.onChange(torrent);
   }
 }

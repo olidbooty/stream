@@ -241,10 +241,13 @@ export class FakeTorrent extends EventEmitter {
     name = 'fixture',
     files = [],
     ready = true,
+    metadata = new Uint8Array(0),
   }: {
     name?: string;
     files?: (FakeFile | FakeFileOptions)[];
     ready?: boolean;
+    // The .torrent file, which the real client keeps in torrent.metadata.
+    metadata?: Uint8Array;
   } = {}): void {
     this.name = name;
     this.files = files.map((file) =>
@@ -252,7 +255,7 @@ export class FakeTorrent extends EventEmitter {
     );
     for (const file of this.files) file.selected = !this.deselect;
     this.length = this.files.reduce((total, file) => total + file.length, 0);
-    this.metadata = new Uint8Array(0);
+    this.metadata = metadata;
     this.emit('metadata');
     if (ready) this.simulateReady();
   }

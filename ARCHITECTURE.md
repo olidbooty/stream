@@ -115,10 +115,37 @@ each file and picks the one to play. It is a pure function of the file list
 
 These heuristics haven't been tried on real torrents yet (Decision #19).
 
-For now the choice doesn't change what is downloaded: WebTorrent still
-fetches every file in the torrent, including samples, extras and other
-encodes. 3.3 will download only the chosen video and its subtitles, and work
-out progress and `seeding` over that selection (Decisions #18 and #23).
+### Downloading only what is watched
+
+Decision #18: `addTorrent()` adds every torrent with `deselect: true`, so
+nothing downloads until files are selected. `TorrentSelection`
+(`server/torrent-selection.ts`) selects them once the file list is known: at
+once for a `.torrent` upload, on `metadata` for a magnet link.
+
+- **What is selected.** `mainFile` and its subtitles. A torrent with no video
+  (music, an ISO) has nothing to choose between, so every file is selected.
+- **Subtitles** go with a video when their name is the video's name,
+  optionally followed by a language code: `Sintel.srt`, `Sintel.en.srt` and
+  `Subs/Sintel.pt_BR.vtt` all go with `Sintel.mp4` (`matchSubtitles()` in
+  `server/media.ts`, Decision #20). Folders are ignored.
+- **Another video.** `POST /api/torrents/:infoHash/files/:index/select`
+  adds a video and its subtitles. Nothing is dropped, so switching episodes
+  keeps a partial download going. Only videos can be selected (`400`).
+- **Streaming is separate.** A read stream fetches the range being played
+  whether or not its file is selected, so any file plays at once. The
+  selection only decides what keeps downloading in the background.
+- **Bookkeeping.** WebTorrent's files don't say whether they are selected,
+  so `TorrentSelection` remembers it in a `WeakMap` per torrent. A piece that
+  spans two files is downloaded whole, so a few kilobytes of a neighbouring
+  unselected file can land on disk.
+
+Decision #23: progress and state follow the selection. A summary's
+`progress` is the selected files' downloaded bytes over `selectedLength`,
+and `seeding` means every selected file is done, rather than
+`torrent.progress` and `torrent.done`, which count every file. So a film
+shows 100% and Seeding when the film is on disk, whatever extras it skipped.
+Before the file list is known, `selectedLength` is `null` and `progress` is
+WebTorrent's own (0).
 
 ### State and events
 
@@ -130,7 +157,7 @@ agree:
 | State | When |
 | ----- | ---- |
 | `error` | WebTorrent hit an error and destroyed the torrent |
-| `seeding` | `torrent.done`: every file is on disk. It keeps uploading while it is in the client, peers or not |
+| `seeding` | Every selected file is on disk (Decision #23). It keeps uploading while it is in the client, peers or not |
 | `noPeers` | No peer connected, and WebTorrent's `noPeers` check has fired since the last one did |
 | `connecting` | Looking for peers, fetching a magnet link's metadata from them, or checking data already on disk |
 | `downloading` | Metadata known and at least one peer connected |
@@ -401,8 +428,8 @@ but moves it:
 end })` returns a stream for a byte range and prioritises the pieces it
 covers, so a `<video>` can start and seek long before the download is done.
 The torrent's piece strategy already defaults to `sequential` in
-`webtorrent@3`, so no custom piece selection is needed (Decision #2); 3.3
-checks this while seeking.
+`webtorrent@3`, so no custom piece selection is needed (Decision #2); 3.3's
+manual check seeks in a large film to confirm it.
 
 - **Ranges.** Express's `req.range()` parses the header. One byte range gets
   `206` with `Content-Range`; a range past the end gets `416` with

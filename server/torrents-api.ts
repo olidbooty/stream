@@ -15,6 +15,12 @@ import { streamFile } from './file-stream.js';
 import { isMagnetURI } from './magnet.js';
 import { type FileMedia, selectMedia } from './media.js';
 import { addTorrent, removeTorrent } from './torrent-client.js';
+import {
+  isVideoFile,
+  mediaInputs,
+  selectionProgress,
+  TorrentSelection,
+} from './torrent-selection.js';
 import { filterSources } from './torrent-sources.js';
 import {
   type TorrentState,
@@ -56,6 +62,11 @@ export interface TorrentSummary {
   ready: boolean;
   // Total size in bytes; null until the metadata arrives.
   length: number | null;
+  // Bytes in the files being downloaded (Decision #18): the main video and
+  // its subtitles, plus any other video played. Null until the metadata
+  // arrives.
+  selectedLength: number | null;
+  // Share of the selected bytes on disk, 0 to 1 (Decision #23).
   progress: number;
   numPeers: number;
   downloadSpeed: number;
@@ -75,6 +86,8 @@ export interface TorrentFileInfo extends FileMedia {
   // Relative to DOWNLOAD_DIR, e.g. "Sintel/Sintel.mp4" for a multi-file torrent.
   path: string;
   length: number;
+  // Downloading in the background, rather than only fetched while played.
+  selected: boolean;
 }
 
 // One torrent with its files. files, mainFile and videos are null while the
@@ -96,11 +109,21 @@ function hasMetadata(torrent: Torrent): boolean {
 
 // Right after add() the real client hasn't parsed the torrent yet, so the
 // caller passes the parsed torrent it already has.
+// What the router remembers about its torrents beyond WebTorrent's fields.
+interface Tracking {
+  watch: TorrentWatch;
+  selection: TorrentSelection;
+}
+
 function summarize(
   torrent: Torrent,
-  watch: TorrentWatch,
+  { watch, selection }: Tracking,
   parsed?: ParsedTorrent,
 ): TorrentSummary {
+  const selected = hasMetadata(torrent) ? selection.get(torrent) : undefined;
+  const progress = selected
+    ? selectionProgress(torrent.files, selected)
+    : undefined;
   return {
     infoHash: torrent.infoHash || (parsed?.infoHash ?? ''),
     name: torrent.name || parsed?.name || null,
@@ -108,13 +131,14 @@ function summarize(
     hasMetadata: hasMetadata(torrent),
     ready: torrent.ready,
     length: hasMetadata(torrent) ? torrent.length : null,
-    progress: torrent.progress,
+    selectedLength: progress?.selectedLength ?? null,
+    progress: progress?.progress ?? torrent.progress,
     numPeers: torrent.numPeers,
     downloadSpeed: torrent.downloadSpeed,
     uploadSpeed: torrent.uploadSpeed,
     state: torrentState({
       failed: false,
-      done: torrent.done,
+      done: progress?.done ?? torrent.done,
       hasMetadata: hasMetadata(torrent),
       numPeers: torrent.numPeers,
       noPeersReported: watch.noPeersReported(torrent),
@@ -123,24 +147,23 @@ function summarize(
   };
 }
 
-function describe(torrent: Torrent, watch: TorrentWatch): TorrentDetail {
+function describe(torrent: Torrent, tracking: Tracking): TorrentDetail {
   if (!hasMetadata(torrent)) {
     return {
-      ...summarize(torrent, watch),
+      ...summarize(torrent, tracking),
       files: null,
       mainFile: null,
       videos: null,
     };
   }
+  const selected = tracking.selection.get(torrent);
   const { files, mainFile, videos } = selectMedia(
-    torrent.files.map((file, index) => ({
-      index,
-      name: file.name,
-      path: file.path,
-      length: file.length,
+    mediaInputs(torrent).map((file) => ({
+      ...file,
+      selected: selected?.has(file.index) ?? false,
     })),
   );
-  return { ...summarize(torrent, watch), files, mainFile, videos };
+  return { ...summarize(torrent, tracking), files, mainFile, videos };
 }
 
 function sendError(
@@ -159,6 +182,8 @@ export function torrentsRouter({
 }: TorrentsRouterOptions): Router {
   const router = Router();
   const watch = new TorrentWatch(client);
+  const selection = new TorrentSelection();
+  const tracking: Tracking = { watch, selection };
 
   const findTorrent = (infoHash: string): Torrent | undefined =>
     client.torrents.find((torrent) => torrent.infoHash === infoHash);
@@ -183,7 +208,7 @@ export function torrentsRouter({
   };
 
   const list = (): TorrentSummary[] => [
-    ...client.torrents.map((torrent) => summarize(torrent, watch)),
+    ...client.torrents.map((torrent) => summarize(torrent, tracking)),
     ...watch.failed(),
   ];
 
@@ -260,19 +285,20 @@ export function torrentsRouter({
       const existing = findTorrent(parsed.infoHash);
       if (existing) {
         return sendError(res, 409, 'This torrent has already been added', {
-          torrent: summarize(existing, watch),
+          torrent: summarize(existing, tracking),
         });
       }
 
       // Hand over the parsed torrent so WebTorrent never re-reads the input.
       const torrent = addTorrent(client, parsed, downloadDir);
+      selection.watch(torrent);
       watch.watch(torrent, parsed.infoHash, () =>
-        summarize(torrent, watch, parsed),
+        summarize(torrent, tracking, parsed),
       );
       res
         .status(201)
         .location(`${req.baseUrl}/${parsed.infoHash}`)
-        .json(summarize(torrent, watch, parsed));
+        .json(summarize(torrent, tracking, parsed));
     },
   );
 
@@ -281,7 +307,7 @@ export function torrentsRouter({
   // torrent has no files any more, so they are null too.
   router.get('/:infoHash', (req, res) => {
     const found = torrentFromParams(req, res);
-    if (found?.torrent) res.json(describe(found.torrent, watch));
+    if (found?.torrent) res.json(describe(found.torrent, tracking));
     else if (found?.failed) {
       res.json({
         ...found.failed,
@@ -292,30 +318,55 @@ export function torrentsRouter({
     }
   });
 
+  // Resolves :infoHash and :index to a file of a running torrent whose file
+  // list is known, or sends the error and returns undefined.
+  const fileFromParams = (
+    req: Request,
+    res: Response,
+  ): { torrent: Torrent; index: number } | undefined => {
+    const found = torrentFromParams(req, res);
+    if (!found) return undefined;
+    if (found.failed) {
+      sendError(res, 409, 'This torrent failed; add it again to retry');
+      return undefined;
+    }
+    const torrent = found.torrent as Torrent;
+    if (!hasMetadata(torrent)) {
+      sendError(res, 409, 'The file list is still being fetched from peers');
+      return undefined;
+    }
+    const index = String(req.params.index);
+    if (!FILE_INDEX.test(index)) {
+      sendError(res, 400, 'index must be a whole number');
+      return undefined;
+    }
+    if (!torrent.files[Number(index)]) {
+      sendError(res, 404, 'No file with that index');
+      return undefined;
+    }
+    return { torrent, index: Number(index) };
+  };
+
   // The file's bytes, for a <video src>. Answers Range requests with 206, so
   // the browser can start and seek before the download is done. Express also
   // routes HEAD here.
   router.get('/:infoHash/files/:index/stream', (req, res) => {
-    const found = torrentFromParams(req, res);
+    const found = fileFromParams(req, res);
+    if (found) streamFile(req, res, found.torrent.files[found.index]);
+  });
+
+  // Starts downloading another video and its subtitles in the background
+  // (Decision #18), e.g. the next episode once the player opens it. What was
+  // selected before stays selected.
+  router.post('/:infoHash/files/:index/select', (req, res) => {
+    const found = fileFromParams(req, res);
     if (!found) return;
-    if (found.failed) {
-      return sendError(res, 409, 'This torrent failed; add it again to retry');
+    const { torrent, index } = found;
+    if (!isVideoFile(torrent.files[index].name)) {
+      return sendError(res, 400, 'Only a video can be selected');
     }
-    const torrent = found.torrent as Torrent;
-    if (!hasMetadata(torrent)) {
-      return sendError(
-        res,
-        409,
-        'The file list is still being fetched from peers',
-      );
-    }
-    const index = String(req.params.index);
-    if (!FILE_INDEX.test(index)) {
-      return sendError(res, 400, 'index must be a whole number');
-    }
-    const file = torrent.files[Number(index)];
-    if (!file) return sendError(res, 404, 'No file with that index');
-    streamFile(req, res, file);
+    selection.selectVideo(torrent, index);
+    res.status(204).end();
   });
 
   router.delete('/:infoHash', async (req, res) => {

@@ -21,11 +21,19 @@ export interface TorrentRow {
   setActionError(message: string | null): void;
 }
 
+// Only the selected files download (Decision #18), so when that is less than
+// the whole torrent both sizes are shown.
+function size({ length, selectedLength }: TorrentSummary): string {
+  if (length === null) return 'Size not known yet';
+  if (selectedLength === null || selectedLength >= length) {
+    return formatBytes(length);
+  }
+  return `${formatBytes(selectedLength)} of ${formatBytes(length)} selected`;
+}
+
 function stats(torrent: TorrentSummary): string {
   const parts = [
-    torrent.length === null
-      ? 'Size not known yet'
-      : formatBytes(torrent.length),
+    size(torrent),
     `${torrent.numPeers} ${torrent.numPeers === 1 ? 'peer' : 'peers'}`,
     `↓ ${formatSpeed(torrent.downloadSpeed)}`,
     `↑ ${formatSpeed(torrent.uploadSpeed)}`,

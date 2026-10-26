@@ -91,6 +91,7 @@ describe('TorrentWatch', () => {
       hasMetadata: torrent.metadata !== null,
       ready: torrent.ready,
       length: torrent.length,
+      selectedLength: torrent.length,
       progress: torrent.progress,
       numPeers: torrent.numPeers,
       downloadSpeed: torrent.downloadSpeed,

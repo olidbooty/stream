@@ -95,8 +95,11 @@ jsdom lacks three browser APIs the page uses:
   stands in for them on `HTMLDialogElement.prototype`.
 - **Media playback.** jsdom's `<video>` never loads or plays, and `load()` and
   `pause()` only log "not implemented". `client/src/player.test.ts` stubs
-  them on `HTMLMediaElement.prototype`, dispatches `waiting`, `stalled`,
-  `canplay` and `error` itself, and defines `video.error` for the error code.
+  them (and `play()`) on `HTMLMediaElement.prototype`, dispatches `waiting`,
+  `stalled`, `canplay`, `loadedmetadata` and `error` itself, and defines
+  `video.error` for the error code. jsdom's `videoWidth` is always 0, which
+  looks like a picture the browser can't decode, so tests that need a picture
+  define it.
   Real playback, seeking and subtitles are checked by hand in a browser.
 
 Pure functions such as `isMagnetURI()` (`server/magnet.ts`),

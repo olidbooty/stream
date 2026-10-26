@@ -4,6 +4,11 @@ import type {
 } from '../../server/torrents-api.js';
 import { type Api, streamUrl, subtitlesUrl } from './api.js';
 import { playerStats, trackLabel } from './format.js';
+import {
+  mediaErrorProblem,
+  type PlaybackProblem,
+  pictureMissingProblem,
+} from './media-error.js';
 import type { PlayRoute } from './player-route.js';
 import { linkButton } from './ui/button.js';
 import { el } from './ui/dom.js';
@@ -76,18 +81,55 @@ export function createPlayer({
 
   // Maps the media events to the status line. `waiting` is ordinary
   // buffering at first; still waiting after PEER_WAIT_MS, or `stalled` while
-  // waiting, means data isn't arriving from peers.
+  // waiting, means data isn't arriving from peers. A video that plays only
+  // its sound keeps a warning up once buffering is over; an error replaces
+  // everything (step 4.2a).
   function wire(player: VideoPlayer, fileName: string): () => void {
     const { video } = player;
     let waiting = false;
     let timer: unknown = null;
+    // What the status line goes back to once nothing is loading: an error,
+    // or the sound-only warning.
+    let notice: PlaybackProblem | null = null;
+    // Where a retry picks up again, once the reloaded stream has metadata.
+    let resumeAt: number | null = null;
+    // Reloading keeps the same src: the server answers a fresh range request.
+    const retry = () => {
+      resumeAt = video.currentTime;
+      video.load();
+    };
+    const settle = () => {
+      if (!notice) {
+        player.setStatus(null);
+        return;
+      }
+      const action = notice.retry
+        ? { label: 'Retry', onClick: retry }
+        : undefined;
+      player.setStatus(notice.message, notice.tone, action);
+    };
     const clearTimer = () => {
       if (timer !== null) stopTimer(timer);
       timer = null;
     };
     const peersSlow = () => player.setStatus('Waiting for data from peers…');
     const handlers: Record<string, () => void> = {
-      loadstart: () => player.setStatus('Loading…'),
+      loadstart: () => {
+        notice = null;
+        player.setStatus('Loading…');
+      },
+      loadedmetadata: () => {
+        if (video.videoWidth === 0) {
+          notice = pictureMissingProblem(fileName);
+          settle();
+        }
+        if (resumeAt !== null) {
+          if (resumeAt > 0) video.currentTime = resumeAt;
+          resumeAt = null;
+          // Retry was a click, so the browser lets it play on.
+          video.play()?.catch(() => {});
+        }
+      },
       waiting: () => {
         waiting = true;
         player.setStatus('Buffering…');
@@ -103,18 +145,22 @@ export function createPlayer({
       canplay: () => {
         waiting = false;
         clearTimer();
-        player.setStatus(null);
+        settle();
       },
       playing: () => {
         waiting = false;
         clearTimer();
-        player.setStatus(null);
+        settle();
       },
       error: () => {
+        waiting = false;
         clearTimer();
-        // MEDIA_ERR_ABORTED (1) is what closing the player causes.
-        if (video.error?.code === 1) return;
-        player.setStatus(`This video can't be played: ${fileName}`, 'error');
+        const problem = mediaErrorProblem(video.error?.code, fileName);
+        if (!problem) return;
+        // Kept until the next load: Chrome still fires `playing` when Play
+        // is pressed on a failed stream.
+        notice = problem;
+        settle();
       },
     };
     for (const [type, handler] of Object.entries(handlers)) {

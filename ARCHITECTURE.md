@@ -193,6 +193,12 @@ those peers back and re-adds the torrent's web seeds; trackers and the DHT find
 the rest. Pausing keeps the data and the selection. Opening the player on a
 paused torrent resumes it, since the video would otherwise never buffer.
 
+WebTorrent 3.0.21 crashes the server when an encrypted peer connects to a
+paused torrent: it turns the peer away, then finishes the encryption handshake
+anyway and reads the swarm it just dropped. `guardPeerHandshake()`
+(`server/peer-handshake.ts`, applied by `createTorrentClient()`) makes
+`Peer.handshake()` skip peers that are already gone.
+
 `GET /api/torrents/events` is a [server-sent events][sse] stream of the same
 list as `GET /api/torrents`, as `torrents` events. `EventStream`
 (`server/event-stream.ts`) sends it on connect, then checks once a second and

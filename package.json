@@ -36,6 +36,7 @@
     "@types/supertest": "^7.2.1",
     "@types/webtorrent": "^3.0.0",
     "@vitest/coverage-v8": "^5.0.5",
+    "bittorrent-protocol": "^5.0.9",
     "jsdom": "^29.1.1",
     "supertest": "^7.3.1",
     "typescript": "^5.9.3",

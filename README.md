@@ -30,7 +30,7 @@ over TCP, uTP and WebRTC. It is configured with environment variables:
 | -------------- | ------------- | ------------ |
 | `PORT`         | `1234`        | HTTP port for the app |
 | `HOST`         | `0.0.0.0`     | HTTP bind address. The peer ports always listen on all interfaces |
-| `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Created at startup if missing; must be writable. Removing a torrent deletes its files |
+| `DOWNLOAD_DIR` | `./downloads` | Where torrent files are stored (gitignored). Created at startup if missing; must be writable. Removing a torrent deletes its files. The torrent list is saved in `DOWNLOAD_DIR/.torrents` and restored on the next start |
 | `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
 | `DHT_PORT`     | `6882`        | UDP port for the DHT. `0` picks a random port |
 | `PORT_MAPPING` | `0`           | `1` lets the client ask your router to forward the peer port (UPnP and NAT-PMP) |
@@ -191,8 +191,12 @@ data: [{"infoHash":"08ada5a7…","name":"Sintel",…,"numPeers":0,"state":"noPee
 In the browser, `new EventSource('/api/torrents/events')` reconnects by itself
 if the server restarts.
 
-Torrents live in memory: after a restart the list is empty, but their files
-stay in `DOWNLOAD_DIR` (see Risks & Decisions #13).
+Torrents survive a restart (Decision #13): each one is saved in
+`DOWNLOAD_DIR/.torrents` as it changes, with its selected files and whether
+it is paused, and added again when the server starts. Their downloaded data
+is kept, re-checked at startup ("Checking files" for a while on a large
+torrent), and the download carries on from there. Failed torrents are not
+restored. Delete `DOWNLOAD_DIR/.torrents` to start with an empty list.
 
 ## Layout
 
@@ -208,6 +212,7 @@ server/webrtc-stub.ts     stands in for webrtc-polyfill in that case
 server/torrent-client.ts  WebTorrent client setup, config from env vars
 server/torrents-api.ts    /api/torrents routes
 server/torrent-state.ts   torrent state (connecting, noPeers, ...) and failed torrents
+server/saved-torrents.ts  saves torrents in DOWNLOAD_DIR/.torrents and loads them at startup
 server/event-stream.ts    server-sent events broadcaster
 server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation

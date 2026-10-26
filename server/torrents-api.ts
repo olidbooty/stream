@@ -22,6 +22,7 @@ import {
   type SubtitleMatch,
   selectMedia,
 } from './media.js';
+import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
 import { serveSubtitle } from './subtitles.js';
 import {
   addTorrent,
@@ -62,6 +63,10 @@ export interface TorrentsRouterOptions {
   downloadDir: string;
   // Open event streams allowed at once; tests lower it.
   maxEventStreams?: number;
+  // Decision #13: where torrents are saved so they survive a restart, and the
+  // ones saved last time, to add again now. Without it nothing is saved.
+  saved?: SavedTorrents;
+  restore?: readonly SavedTorrent[];
 }
 
 // What the list and the event stream show per torrent.
@@ -220,10 +225,33 @@ export function torrentsRouter({
   client,
   downloadDir,
   maxEventStreams = MAX_EVENT_STREAMS,
+  saved,
+  restore = [],
 }: TorrentsRouterOptions): Router {
   const router = Router();
   const watch = new TorrentWatch(client);
-  const selection = new TorrentSelection();
+  // For saving: when each torrent was added and its filtered magnet link. The
+  // real torrent's infoHash is only set once WebTorrent has parsed it, a tick
+  // after add(), so it is kept here too.
+  const origins = new WeakMap<
+    Torrent,
+    { infoHash: string; addedAt: number; magnetURI: string }
+  >();
+
+  // Saves what a restart needs to add the torrent again as the user left it.
+  const save = (torrent: Torrent): void => {
+    const origin = origins.get(torrent);
+    if (!saved || !origin || !client.torrents.includes(torrent)) return;
+    const { infoHash, ...choices } = origin;
+    const selected = selection.get(torrent);
+    void saved.save(infoHash, {
+      ...choices,
+      paused: torrent.paused,
+      selected: selected ? [...selected].sort((a, b) => a - b) : null,
+    });
+  };
+
+  const selection = new TorrentSelection(save);
   const tracking: Tracking = { watch, selection, media: new WeakMap() };
 
   const findTorrent = (infoHash: string): Torrent | undefined =>
@@ -247,6 +275,47 @@ export function torrentsRouter({
     sendError(res, 404, 'No torrent with that info hash');
     return undefined;
   };
+
+  // Adds a torrent that passed the checks in POST /, or one saved before the
+  // last restart with what the user had chosen for it.
+  const start = (parsed: ParsedTorrent, restored?: SavedTorrent): Torrent => {
+    // Hand over the parsed torrent so WebTorrent never re-reads the input.
+    const torrent = addTorrent(client, parsed, downloadDir);
+    const { infoHash } = parsed;
+    origins.set(torrent, {
+      infoHash,
+      addedAt: restored?.addedAt ?? Date.now(),
+      magnetURI: toMagnetURI(parsed),
+    });
+    selection.watch(torrent, restored?.selected);
+    watch.watch(torrent, infoHash, () => summarize(torrent, tracking, parsed));
+    if (restored?.paused) pauseTorrent(torrent);
+    if (!saved) return torrent;
+
+    save(torrent);
+    // The .torrent, so a magnet link needn't fetch its metadata again.
+    const saveMetadata = () => {
+      if (torrent.metadata && client.torrents.includes(torrent)) {
+        void saved.saveTorrentFile(infoHash, torrent.metadata);
+      }
+    };
+    if (torrent.metadata) saveMetadata();
+    else torrent.once('metadata', saveMetadata);
+    // A failed torrent's files are gone (Decision #22), so it isn't restored.
+    // TorrentWatch listened first, so the failure is already recorded; it
+    // isn't when WebTorrent only dropped a duplicate of a running torrent.
+    torrent.once('error', () => {
+      if (watch.getFailed(infoHash)) void saved.delete(infoHash);
+    });
+    return torrent;
+  };
+
+  for (const entry of restore) {
+    // Checked again in case the saved sources predate a change to the filter.
+    const filtered = filterSources(entry.parsed);
+    if (findTorrent(entry.infoHash)) continue;
+    start(filtered.torrent, entry);
+  }
 
   const list = (): TorrentSummary[] => [
     ...client.torrents.map((torrent) => summarize(torrent, tracking)),
@@ -330,12 +399,7 @@ export function torrentsRouter({
         });
       }
 
-      // Hand over the parsed torrent so WebTorrent never re-reads the input.
-      const torrent = addTorrent(client, parsed, downloadDir);
-      selection.watch(torrent);
-      watch.watch(torrent, parsed.infoHash, () =>
-        summarize(torrent, tracking, parsed),
-      );
+      const torrent = start(parsed);
       res
         .status(201)
         .location(`${req.baseUrl}/${parsed.infoHash}`)
@@ -439,6 +503,7 @@ export function torrentsRouter({
         );
       }
       apply(found.torrent as Torrent);
+      save(found.torrent as Torrent);
       res.status(204).end();
     });
   }
@@ -446,8 +511,10 @@ export function torrentsRouter({
   router.delete('/:infoHash', async (req, res) => {
     const found = torrentFromParams(req, res);
     if (!found) return;
-    if (found.torrent) await removeTorrent(client, found.torrent.infoHash);
-    else if (found.failed) watch.forget(found.failed.infoHash);
+    if (found.torrent) {
+      await removeTorrent(client, found.torrent.infoHash);
+      await saved?.delete(found.torrent.infoHash);
+    } else if (found.failed) watch.forget(found.failed.infoHash);
     res.status(204).end();
   });
 

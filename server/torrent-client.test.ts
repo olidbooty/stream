@@ -283,6 +283,22 @@ describe('destroyTorrentClient', () => {
     expect(fake.listening).toBe(false);
     expect(torrent.destroyed).toBe(true);
   });
+
+  // Decision #13: the files stay so the torrent can be restored on the next
+  // start. Only DELETE removes them.
+  it('keeps the downloaded files', async () => {
+    const fake = new FakeWebTorrent();
+    const torrent = addTorrent(
+      fake as unknown as WebTorrent,
+      MAGNET,
+      '/srv/downloads',
+    ) as unknown as FakeTorrent;
+
+    await destroyTorrentClient(fake as unknown as WebTorrent);
+
+    expect(torrent.destroyed).toBe(true);
+    expect(torrent.storeDestroyed).toBe(false);
+  });
 });
 
 describe('pauseTorrent and resumeTorrent', () => {
@@ -320,6 +336,17 @@ describe('pauseTorrent and resumeTorrent', () => {
       '[2001:db8::1]:51413',
     ]);
     expect(torrent.addedWebSeeds).toEqual(['https://seed.example.com/']);
+  });
+
+  // A torrent restored as paused (Decision #13) never got to try them.
+  it("tries the magnet link's x.pe peers on resume", () => {
+    const torrent = new FakeWebTorrent().add(MAGNET);
+    Object.assign(torrent, { peerAddresses: ['192.0.2.9:7001'] });
+    pauseTorrent(torrent as unknown as Torrent);
+
+    resumeTorrent(torrent as unknown as Torrent);
+
+    expect(torrent.addedPeers).toEqual(['192.0.2.9:7001']);
   });
 
   it('does nothing when already in that state', () => {

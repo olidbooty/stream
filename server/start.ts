@@ -1,5 +1,6 @@
 import { createApp } from './app.js';
 import { lanAddresses } from './network.js';
+import { SavedTorrents } from './saved-torrents.js';
 import {
   createTorrentClient,
   destroyTorrentClient,
@@ -16,6 +17,9 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
   const host = process.env.HOST || '0.0.0.0';
   const config = torrentConfig();
   await ensureDownloadDir(config.downloadDir);
+  // Decision #13: add the torrents from before the last shutdown again.
+  const saved = new SavedTorrents(config.downloadDir);
+  const restore = await saved.load();
 
   const client = createTorrentClient({ ...config, webrtc });
 
@@ -56,18 +60,25 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
     process.exit(1);
   });
 
-  const server = createApp({ client, downloadDir: config.downloadDir }).listen(
-    port,
-    host,
-    () => {
-      console.log(`stream listening on http://localhost:${port}`);
-      if (host === '0.0.0.0') {
-        for (const address of lanAddresses()) {
-          console.log(`  on your network: http://${address}:${port}`);
-        }
+  if (restore.length > 0) {
+    console.log(
+      `restoring ${restore.length} torrent${restore.length === 1 ? '' : 's'} from ${saved.dir}`,
+    );
+  }
+  const app = createApp({
+    client,
+    downloadDir: config.downloadDir,
+    saved,
+    restore,
+  });
+  const server = app.listen(port, host, () => {
+    console.log(`stream listening on http://localhost:${port}`);
+    if (host === '0.0.0.0') {
+      for (const address of lanAddresses()) {
+        console.log(`  on your network: http://${address}:${port}`);
       }
-    },
-  );
+    }
+  });
 
   let shuttingDown = false;
 
@@ -80,6 +91,7 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
     server.closeAllConnections();
     try {
       await destroyTorrentClient(client);
+      await saved.flush();
       process.exit(0);
     } catch (err) {
       console.error('error destroying torrent client:', err);

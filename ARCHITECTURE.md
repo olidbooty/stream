@@ -93,10 +93,11 @@ each file and picks the one to play. It is a pure function of the file list
   `.ogv` is in this group because Safari has never played Ogg and Chrome has
   deprecated Theora. `.srt` and `.vtt` are flagged as `subtitle` for 3.4.
   The full list is in the [README](README.md#api).
-- **No codec checks yet.** The 4.1 audit (Decision #5) was meant to inform
-  this filter but hasn't run: it needs `ffprobe` and real files. So an
-  `.mp4` holding HEVC or AC-3 audio is still reported as `video`. Codec-level
-  checks come with 4.1 and 4.2 (Decision #17).
+- **Codecs aren't checked here.** Only the extension is known when the file
+  list arrives, so an `.mp4` holding HEVC or AC-3 sound is still `video`.
+  [Codec support](#codec-support) lists what plays; 4.2b will probe the file
+  with `ffprobe` and warn before playing (Decision #17), and 4.2a reports what
+  the browser says.
 - **Samples.** A video with the word `sample` or `samples` in its path that
   is under a quarter of the size of the largest video is a `sample`. The
   size check keeps a film called "The Sample" from being skipped, and a
@@ -114,6 +115,74 @@ each file and picks the one to play. It is a pure function of the file list
   (`Episode 2` before `Episode 10`) with a fixed locale.
 
 These heuristics haven't been tried on real torrents yet (Decision #19).
+
+### Codec support
+
+Step 4.1 (Decision #5). Whether a file plays depends on its codecs more than
+its container, so the audit plays one short clip per common container and
+codec pair through the app, in each browser. `npm run codec-clips` makes the
+clips with `ffmpeg` (10 s, 640x360, a test pattern and a beeping tone; nothing
+copyrighted), `npm run seed` seeds them from a second client on the same
+machine, and `npm run probe` prints what `ffprobe` finds in any file or stream
+URL. How to run it is in [TESTING.md](TESTING.md#codec-check).
+
+`server/probe.ts` holds the probe itself: `runFfprobe()` runs `ffprobe` with
+an argument array (never a shell) and a 15-second timeout, and the pure
+`summarizeProbe()` reduces its JSON to the container, the video codec,
+profile and bit depth, and each audio and subtitle stream. 4.2b reuses both.
+`server/fixtures/probe/` keeps `ffprobe`'s output for every clip, so tests of
+the rules never need `ffprobe`.
+
+Results, played through the stream route of the built app. **Plays**: picture
+and sound. **No sound** and **No picture**: it plays, with the other track
+missing and no error. **Error 4**: `MEDIA_ERR_SRC_NOT_SUPPORTED`.
+
+| Clip | Chromium 153 (Linux) | Chrome (Mac) | Safari (Mac) | Firefox (Mac) | TV |
+| ---- | -------------------- | ------------ | ------------ | ------------- | -- |
+| MP4 H.264 / AAC | Plays | | | | |
+| MP4 H.264 High 10 (10-bit) / AAC | Plays | | | | |
+| MP4 H.264 / MP3 | Plays | | | | |
+| MP4 H.264 / AC-3 5.1 | No sound | | | | |
+| MP4 H.264 / E-AC-3 5.1 | No sound | | | | |
+| MP4 HEVC / AAC | No picture | | | | |
+| MP4 AV1 / Opus | Plays | | | | |
+| MKV H.264 / AAC | Plays | | | | |
+| MKV H.264 / AC-3 5.1 | No sound | | | | |
+| MKV H.264 / DTS 5.1 | No sound | | | | |
+| MKV H.264 / FLAC | Plays | | | | |
+| MKV HEVC / AAC | No picture | | | | |
+| WebM VP9 / Opus | Plays | | | | |
+| WebM VP8 / Vorbis | Plays | | | | |
+| WebM AV1 / Opus | Plays | | | | |
+| MOV H.264 / AAC | Plays | | | | |
+| AVI Xvid / MP3 | Error 4 | | | | |
+| MPEG-TS H.264 / AAC | Error 4 | | | | |
+| Ogg Theora / Vorbis | No picture | | | | |
+
+The Chromium column is Playwright's build in the development sandbox, checked
+on 26 Oct 26; it has H.264 and AAC but no HEVC. The other columns are for the
+owner's devices, as agreed in the 24 Oct 26 plan.
+
+What this means so far:
+
+- **Silent sound is the common failure, and it raises no error.** AC-3,
+  E-AC-3 and DTS, the usual sound in films and TV rips, play as picture only
+  with no `MediaError` and no event, so 4.2a can't see it. Only a probe
+  before playing (4.2b) can warn about it.
+- **A missing picture can be seen**: HEVC and Theora play sound only, which
+  4.2a already reports from `videoWidth` 0.
+- **The container matters less than expected.** MKV and MOV play whenever
+  their codecs do, and an MP4 with HEVC or AC-3 doesn't, so the extension
+  groups in [Choosing the media file](#choosing-the-media-file) stay a first
+  guess. AVI and MPEG-TS are refused outright.
+
+Draft rules for 4.2b's `codecVerdict()`, to confirm against the owner's columns:
+
+| Verdict | When |
+| ------- | ---- |
+| `wontPlay` | Container AVI or MPEG-TS; or no video stream the browser decodes (Theora, MPEG-4 Part 2, MPEG-2, VC-1) |
+| `mayNotPlay` | HEVC video (Safari and Chrome with hardware support only); any audio stream that is AC-3, E-AC-3, DTS, TrueHD or PCM with no AAC, MP3, Opus, Vorbis or FLAC stream beside it; 10-bit H.264 (plays here in software, not on most TVs) |
+| `plays` | H.264, VP8, VP9 or AV1 video with AAC, MP3, Opus, Vorbis or FLAC sound in MP4, MOV, MKV or WebM |
 
 ### Downloading only what is watched
 
@@ -537,7 +606,7 @@ design stays next to the code.
 | 2 | Whether explicit sequential piece selection is needed | Decided | No. `webtorrent@3` defaults to the `sequential` strategy and `createReadStream` fetches the requested range first. 3.3 checks seeking and reopens this only if playback stalls |
 | 3 | Whether to list `.mkv` and similar with a warning | Decided | Yes. 3.1 lists `.mkv`, `.avi`, `.mov` and other video files marked "may not play" next to `.mp4`/`.webm`. 4.2 shows the real playback error; 4.4 can remux |
 | 4 | Chunk store / storage strategy | Decided | Default `fs-chunk-store` in `DOWNLOAD_DIR` (default `./downloads`). Removing a torrent deletes its files; 4.3 adds a size limit. See [Storage](#storage) |
-| 5 | Run the codec audit (4.1) early on test files | Decided | Yes. 4.1 now depends on 2.3 instead of 3.1, so test files are checked with `ffprobe` before playback work and 3.1's filter can use the results |
+| 5 | Run the codec audit (4.1) early on test files | Decided | Yes. 4.1 now depends on 2.3 instead of 3.1. Done in 4.1 with synthetic clips (`npm run codec-clips`), `npm run probe` and a browser matrix; AC-3, E-AC-3 and DTS sound play silently with no error, so 4.2b must probe before playing. See [Codec support](#codec-support) |
 | 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |
 | 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Decided | Off by default: the client gets `natUpnp: false` and `natPmp: false`, and `PORT_MAPPING=1` turns both on. No silent router changes; users forward `TORRENT_PORT` by hand, documented in the README. Implemented in 2.6 |
 | 8 | Peer port listens on all interfaces | Decided | Accepted. Peers must reach it, so `HOST` only limits the HTTP port. See [Network exposure](#network-exposure) |

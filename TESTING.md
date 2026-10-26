@@ -241,3 +241,28 @@ Only use content you have the right to share: open-licensed films such as
 Sintel or Big Buck Bunny, or files you made yourself.
 
 Record what you checked by hand in the pull request description.
+
+### Codec check
+
+Step 4.1's browser matrix ([ARCHITECTURE.md](ARCHITECTURE.md#codec-support))
+plays a set of synthetic clips through the app. It needs `ffmpeg` with
+`libx264`, `libx265`, `libsvtav1`, `libvpx`, `libopus`, `libvorbis`,
+`libmp3lame`, `libxvid` and `libtheora`, which Homebrew's and Debian's builds
+include.
+
+1. `npm run codec-clips` writes 19 clips of 10 seconds to `codec-clips/`
+   (gitignored), named `<container>-<video>-<audio>`.
+2. `npm start` in one terminal, `npm run seed -- codec-clips` in another. The
+   seeder prints a magnet link with its own address (`x.pe=127.0.0.1:<port>`),
+   so no tracker, DHT or internet is needed. On another device, use the
+   server's LAN URL as usual: only the server talks to the seeder.
+3. Add the magnet link in the app, expand the torrent and play each clip in
+   turn, with the sound on. Note for each: plays, no sound, no picture, or the
+   error the player shows.
+4. Remove the torrent and stop the seeder with Ctrl+C.
+
+`npm run probe -- <file or URL>` shows what a clip, or any file, holds. A URL
+can be a torrent file's stream route, and only the pieces `ffprobe` reads are
+downloaded. `npm run codec-clips -- codec-clips --fixtures server/fixtures/probe`
+also refreshes the stored `ffprobe` output the probe tests read; commit it if
+it changes.

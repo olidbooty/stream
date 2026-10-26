@@ -211,6 +211,9 @@ server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation
 server/torrent-sources.ts drops trackers, web seeds and xs= URLs on local addresses
 server/media.ts           classifies a torrent's files and picks the one to play
+server/probe.ts           runs ffprobe and summarises a file's codecs (4.1)
+server/fixtures/probe/    ffprobe output for the 4.1 clips, for tests
+scripts/                  probe, codec-clips and seed command-line tools
 client/src/main.ts        page entry point: wires the modules below together
 client/src/api.ts         typed client for /api/torrents
 client/src/live-updates.ts  the page's one event stream (Decision #21)
@@ -219,6 +222,7 @@ client/src/torrent-list.ts  the live torrent list and its file lists
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)
+codec-clips/              clips from npm run codec-clips (gitignored)
 dist-gallery/             component gallery build for GitHub Pages (gitignored)
 .github/workflows/        publishes the gallery from main
 downloads/                default DOWNLOAD_DIR (gitignored)
@@ -241,6 +245,9 @@ biome.json                Biome lint and format config
 | `npm test`           | Run the test suite once              |
 | `npm run test:watch` | Run tests in watch mode              |
 | `npm run coverage`   | Run tests with coverage              |
+| `npm run probe -- <file or URL>` | Show a file's container and codecs with `ffprobe` (`--json` for all of it) |
+| `npm run codec-clips` | Make the step 4.1 test clips with `ffmpeg` in `codec-clips/` |
+| `npm run seed -- <file or folder>` | Seed files from a second local client and print a magnet link for the app |
 
 The code is TypeScript. `tsconfig.json` only type-checks (`noEmit`): Vite and
 Vitest transpile it themselves and `tsx` runs the server, so there is no

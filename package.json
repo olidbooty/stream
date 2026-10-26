@@ -18,7 +18,10 @@
     "coverage": "vitest run --coverage",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "probe": "tsx scripts/probe.ts",
+    "codec-clips": "tsx scripts/codec-clips.ts",
+    "seed": "tsx scripts/seed.ts"
   },
   "license": "ISC",
   "dependencies": {

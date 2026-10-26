@@ -5,10 +5,17 @@ import { fileList } from './ui/file-list.js';
 import { type TorrentRow, torrentRow } from './ui/torrent-row.js';
 
 export interface TorrentListOptions {
-  api: Pick<Api, 'getTorrent' | 'removeTorrent' | 'addMagnet'>;
+  api: Pick<
+    Api,
+    | 'getTorrent'
+    | 'removeTorrent'
+    | 'addMagnet'
+    | 'pauseTorrent'
+    | 'resumeTorrent'
+  >;
   // Asks before Remove, which deletes the downloaded files.
   confirm(message: string): Promise<boolean>;
-  // Called after a remove or retry, e.g. to refresh the list at once.
+  // Called after a pause, resume, remove or retry, e.g. to refresh the list at once.
   onChanged(): void;
 }
 
@@ -110,6 +117,20 @@ export function torrentList({
     }
   }
 
+  async function togglePause(entry: Entry): Promise<void> {
+    const paused = entry.torrent.state === 'paused';
+    const { infoHash } = entry.torrent;
+    entry.row.setActionError(null);
+    try {
+      await (paused ? api.resumeTorrent(infoHash) : api.pauseTorrent(infoHash));
+      onChanged();
+    } catch (err) {
+      entry.row.setActionError(
+        `Couldn't ${paused ? 'resume' : 'pause'} it: ${errorMessage(err)}`,
+      );
+    }
+  }
+
   function create(torrent: TorrentSummary): Entry {
     const entry: Entry = {
       torrent,
@@ -121,6 +142,7 @@ export function torrentList({
         },
         onRemove: () => void remove(entry),
         onRetry: () => void retry(entry),
+        onTogglePause: () => void togglePause(entry),
       }),
     };
     return entry;

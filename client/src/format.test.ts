@@ -3,7 +3,9 @@ import {
   formatBytes,
   formatPercent,
   formatSpeed,
+  playerStats,
   stateLabel,
+  trackLabel,
 } from './format.js';
 
 describe('formatBytes', () => {
@@ -53,6 +55,7 @@ describe('stateLabel', () => {
     ['downloading', 'downloading', 'Downloading'],
     ['seeding', 'seeding', 'Seeding'],
     ['noPeers', 'noPeers', 'No peers yet, still searching'],
+    ['paused', 'paused', 'Paused'],
     ['error', 'error', 'Failed'],
   ] as const)('labels %s', (state, tone, label) => {
     expect(stateLabel({ ...base, state })).toEqual({ tone, label });
@@ -68,5 +71,41 @@ describe('stateLabel', () => {
     expect(
       stateLabel({ state: 'connecting', hasMetadata: false, ready: false }),
     ).toEqual({ tone: 'connecting', label: 'Connecting' });
+  });
+});
+
+describe('trackLabel', () => {
+  it('names the language from its code', () => {
+    expect(trackLabel('en')).toBe('English');
+    expect(trackLabel('pt-br')).toBe('Brazilian Portuguese');
+  });
+
+  it('falls back to "Subtitles" or the code', () => {
+    expect(trackLabel(null)).toBe('Subtitles');
+    expect(trackLabel('zz-not-a-tag-at-all')).toBe('zz-not-a-tag-at-all');
+  });
+});
+
+describe('playerStats', () => {
+  it('shows progress, peers and speed', () => {
+    expect(
+      playerStats({
+        numPeers: 1,
+        downloadSpeed: 1_250_000,
+        progress: 0.425,
+        state: 'downloading',
+      }),
+    ).toBe('42.5% downloaded · 1 peer · ↓ 1.3 MB/s');
+  });
+
+  it('says when the download is finished', () => {
+    expect(
+      playerStats({
+        numPeers: 0,
+        downloadSpeed: 0,
+        progress: 1,
+        state: 'seeding',
+      }),
+    ).toBe('Downloaded · 0 peers · ↓ 0 B/s');
   });
 });

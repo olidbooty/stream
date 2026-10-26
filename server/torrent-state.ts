@@ -5,6 +5,7 @@ import type { TorrentSummary } from './torrents-api.js';
 // What the UI shows for a torrent. `noPeers` is Decision #15: no peer is
 // connected and WebTorrent's own check has found none since the last one left.
 export type TorrentState =
+  | 'paused'
   | 'connecting'
   | 'downloading'
   | 'seeding'
@@ -14,7 +15,9 @@ export type TorrentState =
 export interface TorrentStateInput {
   // WebTorrent hit an error and destroyed the torrent.
   failed: boolean;
-  // Every file is on disk (torrent.done).
+  // Paused by the user: no peers, nothing transferred.
+  paused: boolean;
+  // Every selected file is on disk (Decision #23).
   done: boolean;
   hasMetadata: boolean;
   // Connected peers (wires), not peers merely discovered.
@@ -27,12 +30,16 @@ export interface TorrentStateInput {
 // list, the detail route and the event stream always agree.
 export function torrentState({
   failed,
+  paused,
   done,
   hasMetadata,
   numPeers,
   noPeersReported,
 }: TorrentStateInput): TorrentState {
   if (failed) return 'error';
+  // Paused beats the rest: it has no peers on purpose, and a paused finished
+  // torrent isn't uploading.
+  if (paused) return 'paused';
   // A finished torrent keeps uploading while it is in the client, with or
   // without peers, so having none isn't a problem worth showing.
   if (done) return 'seeding';

@@ -157,6 +157,7 @@ agree:
 | State | When |
 | ----- | ---- |
 | `error` | WebTorrent hit an error and destroyed the torrent |
+| `paused` | Paused by the user (see [Pausing](#pausing)), whatever else it is doing |
 | `seeding` | Every selected file is on disk (Decision #23). It keeps uploading while it is in the client, peers or not |
 | `noPeers` | No peer connected, and WebTorrent's `noPeers` check has fired since the last one did |
 | `connecting` | Looking for peers, fetching a magnet link's metadata from them, or checking data already on disk |
@@ -180,6 +181,17 @@ remembers them:
   the duplicate when one torrent is added twice at once. `addTorrent()` still
   attaches its own logging `error` listener, so torrent errors never reach the
   client's fatal handler.
+
+### Pausing
+
+Each row has a Pause/Resume button (`POST .../pause` and `.../resume`).
+WebTorrent's own `torrent.pause()` only stops new peers from connecting: wires
+that are already open keep downloading and uploading. So `pauseTorrent()` in
+`server/torrent-client.ts` also destroys every wire, remembering the addresses
+of the peers it dialled itself, and `resumeTorrent()` calls `resume()`, adds
+those peers back and re-adds the torrent's web seeds; trackers and the DHT find
+the rest. Pausing keeps the data and the selection. Opening the player on a
+paused torrent resumes it, since the video would otherwise never buffer.
 
 `GET /api/torrents/events` is a [server-sent events][sse] stream of the same
 list as `GET /api/torrents`, as `torrents` events. `EventStream`
@@ -227,7 +239,9 @@ needs as arguments, so it can be tested in jsdom (see
 | `torrent-form.ts` | Adds a magnet link (JSON) or a `.torrent` file (the `File` as the raw body) |
 | `torrent-list.ts` | One row per torrent, keyed by info hash and updated in place, so the once-a-second updates never rebuild what the user is focused on. A row fetches `GET /api/torrents/:infoHash` when it is expanded, and again only when its metadata arrives. Remove asks first, since it deletes the files; Retry adds a failed torrent's magnet link again (Decision #22) |
 | `live-updates.ts` | The page's event stream (above) |
-| `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24) |
+| `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24); subtitle track names and the player's stats line |
+| `player-route.ts` | The player's address, `#play/<infoHash>/<index>`. `main.ts` shows the list or the player on `hashchange`, so Back closes the player and a link opens it on another device |
+| `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and an error naming the file. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) |
 
 Response types are imported from `server/torrents-api.ts` with `import type`,
 which the build erases, so the client and server can't drift apart.
@@ -251,8 +265,9 @@ opened on phones and TV browsers, so it ships plain TypeScript and CSS:
 - **Components** in `client/src/ui/`, each a function that takes plain data
   and returns elements, styled by `client/src/styles/components.css`:
   `button`, `field`, `stateBadge`, `progressBar` (native `<progress>`),
-  `fileList`, `torrentRow`, `statusBanner` and `confirmDialog` (native
-  `<dialog>`). None of them calls the API, so the component gallery
+  `fileList`, `torrentRow`, `statusBanner`, `confirmDialog` (native
+  `<dialog>`) and `videoPlayer` (native `<video controls>`, 3.4), with
+  `linkButton` for actions that are navigation, such as Play. None of them calls the API, so the component gallery
   renders them with `client/src/sample-data.ts`.
 - **Gallery** (step 2.7): `client/gallery/index.html` shows every component
   in each state, plus the add form and torrent list with a stubbed API. The
@@ -261,9 +276,11 @@ opened on phones and TV browsers, so it ships plain TypeScript and CSS:
   It is published to GitHub Pages from `main`; see the
   [README](README.md#component-gallery).
 
-Use these for new UI (the 3.4 player, 4.2 warnings) rather than adding styles.
-If the UI outgrows about ten components or its state gets awkward, Preact is
-the smallest step up; the tokens carry over.
+Use these for new UI (4.2 warnings) rather than adding styles. With the 3.4
+player there are nine components and one view switch, still comfortable
+without a framework (Decision #27's check). If the UI outgrows about ten
+components or its state gets awkward, Preact is the smallest step up; the
+tokens carry over.
 
 ## Target design
 
@@ -535,7 +552,7 @@ design stays next to the code.
 | 17 | Media classification is by extension only | Decided | The browser decides: in 4.2 the player reports the `<video>` error with the file name and container. If `ffprobe` is installed, the server also probes codecs through the stream URL (only the header pieces are fetched) so the UI can warn before playing; it stays optional. Extension-only classification remains the first guess |
 | 18 | Whole torrent is downloaded, not just the chosen file | Decided | Download the chosen video and its subtitles only: add torrents with `deselect: true`, then select `mainFile` and its subtitles; picking another video selects it too. Streaming still fetches any range played. Implemented in 3.3 |
 | 19 | Main-file heuristics are unproven | Decided | Accepted for now: a sample is under 25% of the largest video, main-sized is at least a third. `.ts` (MPEG-TS) also matches TypeScript sources, and video inside `.rar`/`.zip` isn't found. Revisit after the manual tests with real torrents. See [Choosing the media file](#choosing-the-media-file) |
-| 20 | Subtitles need work before playback | Decided | Serve `.vtt` as is and convert `.srt` to WebVTT on the server (UTF-8, falling back to Windows-1252). Match subtitles to a video by file name with an optional language code (`Sintel.en.srt` → `Sintel.mp4`, `en`). No `.ass`/`.ssa` or embedded MKV subtitles in M4. Implemented in 3.4 |
+| 20 | Subtitles need work before playback | Decided | Serve `.vtt` as is and convert `.srt` to WebVTT on the server (UTF-8, falling back to Windows-1252). Match subtitles to a video by file name with an optional language code (`Sintel.en.srt` → `Sintel.mp4`, `en`). No `.ass`/`.ssa` or embedded MKV subtitles in M4. Implemented in 3.4: `GET .../files/:index/subtitles.vtt` (`server/subtitles.ts`) serves them, files above 2 MiB get `413`, and the player adds one `<track>` per match |
 | 21 | Event stream connections per browser | Decided | One stream per page, closed while the tab is hidden and reopened when it is shown, so background tabs hold no connection; the server caps open streams at 32 (`503` above). HTTP/2 is ruled out because browsers only use it over HTTPS. Implemented in 2.5 |
 | 22 | Failed torrents | Decided | Kept in memory with `state: 'error'` until deleted or re-added, at most 50, lost on restart like #13. WebTorrent has already deleted their files, so a retry starts from zero. See [State and events](#state-and-events) |
 | 23 | `seeding` needs every file | Decided | Progress and state follow the selection (#18): progress is computed from the selected files and `seeding` means every selected file is done, instead of `torrent.done`/`torrent.progress`, which count every file. Implemented in 3.3 |

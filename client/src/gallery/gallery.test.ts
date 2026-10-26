@@ -49,6 +49,7 @@ describe('gallery entries', () => {
       'downloading',
       'error',
       'noPeers',
+      'paused',
       'seeding',
     ]);
   });

@@ -23,3 +23,23 @@ export function button({
   if (onClick) element.addEventListener('click', onClick);
   return element;
 }
+
+export interface LinkButtonOptions {
+  label: string;
+  href: string;
+  variant?: ButtonVariant;
+}
+
+// A link that looks like a button, for actions that are navigation, such as
+// opening the player. Being a link, it can be opened in a new tab or copied.
+export function linkButton({
+  label,
+  href,
+  variant = 'secondary',
+}: LinkButtonOptions): HTMLAnchorElement {
+  return el('a', {
+    className: `button button--${variant}`,
+    text: label,
+    attrs: { href },
+  });
+}

@@ -55,6 +55,7 @@ h2 {
   background: var(--color-surface-raised);
   color: var(--color-text);
   font: inherit;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -183,6 +184,9 @@ h2 {
 }
 .state-badge[data-tone="error"] {
   --badge-color: var(--color-state-error);
+}
+.state-badge[data-tone="paused"] {
+  --badge-color: var(--color-state-paused);
 }
 
 /* Progress bar */
@@ -368,6 +372,56 @@ h2 {
 
 .file-list__tag--warning {
   color: var(--color-state-noPeers);
+}
+
+/* Video player */
+.video-player {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.video-player__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.video-player__title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.video-player__video {
+  width: 100%;
+  max-height: var(--height-video);
+  border-radius: var(--radius-md);
+  background: var(--color-video-backdrop);
+}
+
+.video-player__status {
+  margin: 0;
+  color: var(--color-state-connecting);
+}
+
+.video-player__status[data-tone="error"] {
+  color: var(--color-state-error);
+}
+
+.video-player__stats {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.player__note {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+.player__note p {
+  margin: 0;
 }
 
 /* Confirm dialog */

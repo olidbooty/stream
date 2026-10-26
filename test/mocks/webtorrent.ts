@@ -155,6 +155,32 @@ export class FakeFile {
   }
 }
 
+// A connected peer, as torrent.wires lists them.
+export class FakeWire {
+  type: string;
+  remoteAddress: string;
+  remotePort: number;
+  destroyed = false;
+  private readonly torrent: FakeTorrent;
+
+  constructor(torrent: FakeTorrent, address: string, type: string) {
+    this.torrent = torrent;
+    this.type = type;
+    const colon = address.lastIndexOf(':');
+    this.remoteAddress = address.slice(0, colon);
+    this.remotePort = Number(address.slice(colon + 1));
+  }
+
+  // Like the real wire, closing it drops the peer.
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    const { wires } = this.torrent;
+    wires.splice(wires.indexOf(this), 1);
+    this.torrent.numPeers -= 1;
+  }
+}
+
 export class FakeTorrent extends EventEmitter {
   // Set by FakeWebTorrent.add(), like the real torrent's `client`.
   client: FakeWebTorrent | null = null;
@@ -172,6 +198,12 @@ export class FakeTorrent extends EventEmitter {
   downloadSpeed = 0;
   uploadSpeed = 0;
   numPeers = 0;
+  wires: FakeWire[] = [];
+  // Web seed URLs, from the .torrent's url-list.
+  urlList: string[] = [];
+  addedWebSeeds: string[] = [];
+  // Like the real torrent's: set by pause(), which only refuses new peers.
+  paused = false;
   progress = 0;
   ready = false;
   // The real client stores the .torrent file here once metadata arrives.
@@ -280,15 +312,36 @@ export class FakeTorrent extends EventEmitter {
   addedPeers: unknown[] = [];
 
   addPeer(peer: unknown, _source?: string): boolean {
+    // The real torrent ignores new peers while paused.
+    if (this.paused) return false;
     this.addedPeers.push(peer);
     this.emit('peer', peer);
     return true;
   }
 
+  addWebSeed(url: string): void {
+    this.addedWebSeeds.push(url);
+  }
+
+  pause(): void {
+    this.paused = true;
+  }
+
+  resume(): void {
+    this.paused = false;
+  }
+
   // A peer connects: numPeers counts connected wires, as in the real client.
-  simulateWire(): void {
+  // `type` is the real wire's: tcpOutgoing, utpIncoming, webrtc, webSeed...
+  simulateWire(
+    address = `127.0.0.1:${6881 + this.numPeers}`,
+    type = 'tcpOutgoing',
+  ): FakeWire {
+    const wire = new FakeWire(this, address, type);
+    this.wires.push(wire);
     this.numPeers += 1;
-    this.emit('wire', {}, `127.0.0.1:${6880 + this.numPeers}`);
+    this.emit('wire', wire, address);
+    return wire;
   }
 
   // Like the real client, an error destroys the torrent (deleting its files

@@ -1,6 +1,7 @@
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { Readable } from 'node:stream';
 import express, { type Express } from 'express';
 import parseTorrent, {
   type Instance as ParsedTorrent,
@@ -15,6 +16,7 @@ import {
   fakeFileBytes,
 } from '../test/mocks/webtorrent.js';
 import { EventStream } from './event-stream.js';
+import { MAX_SUBTITLE_BYTES } from './subtitles.js';
 import {
   MAX_EVENT_STREAMS,
   MAX_TORRENT_FILE_BYTES,
@@ -271,6 +273,7 @@ describe('/api/torrents', () => {
           length: 1000,
           selectedLength: 1000,
           progress: 0.25,
+          mainFile: 0,
           numPeers: 3,
           downloadSpeed: 500,
           uploadSpeed: 0,
@@ -422,6 +425,7 @@ describe('/api/torrents', () => {
           selected: true,
           media: 'video',
           sample: false,
+          subtitles: [{ index: 1, language: 'en' }],
         },
         {
           index: 1,
@@ -431,6 +435,7 @@ describe('/api/torrents', () => {
           selected: true,
           media: 'subtitle',
           sample: false,
+          subtitles: [],
         },
         {
           index: 2,
@@ -440,6 +445,7 @@ describe('/api/torrents', () => {
           selected: false,
           media: 'other',
           sample: false,
+          subtitles: [],
         },
       ]);
       expect(res.body).toMatchObject({ mainFile: 0, videos: [0] });
@@ -462,6 +468,7 @@ describe('/api/torrents', () => {
           selected: true,
           media: 'video',
           sample: false,
+          subtitles: [],
         },
       ]);
       expect(res.body).toMatchObject({ mainFile: 0, videos: [0] });
@@ -1090,6 +1097,145 @@ describe('/api/torrents', () => {
       );
 
       expect(res.status).toBe(409);
+    });
+  });
+
+  // Decision #20.
+  describe('GET /:infoHash/files/:index/subtitles.vtt', () => {
+    const SRT = '1\r\n00:00:01,000 --> 00:00:02,500\r\nHello\r\n';
+
+    async function addSubtitles(
+      files: (FakeFileOptions & { content?: Buffer })[],
+    ) {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      const torrent = client.torrents[0];
+      torrent.simulateMetadata({ name: 'Sintel', files });
+      // Serve each file's own content rather than the fake's byte pattern.
+      files.forEach(({ content }, index) => {
+        if (!content) return;
+        torrent.files[index].createReadStream = () =>
+          Readable.from([content]) as never;
+      });
+      return torrent;
+    }
+
+    it('converts a .srt file to WebVTT', async () => {
+      await addSubtitles([
+        { name: 'Sintel.mp4', length: 1000 },
+        {
+          name: 'Sintel.en.srt',
+          length: SRT.length,
+          content: Buffer.from(SRT),
+        },
+      ]);
+
+      const res = await request(app).get(
+        `/api/torrents/${HASH}/files/1/subtitles.vtt`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toBe('text/vtt; charset=utf-8');
+      expect(res.text).toBe(
+        'WEBVTT\n\n00:00:01.000 --> 00:00:02.500\nHello\n\n',
+      );
+    });
+
+    it('serves a .vtt file as is', async () => {
+      const vtt = 'WEBVTT\n\n00:01.000 --> 00:02.000\nHi\n';
+      await addSubtitles([
+        { name: 'Sintel.vtt', length: vtt.length, content: Buffer.from(vtt) },
+      ]);
+
+      const res = await request(app).get(
+        `/api/torrents/${HASH}/files/0/subtitles.vtt`,
+      );
+
+      expect(res.text).toBe(vtt);
+    });
+
+    it('refuses files that are not subtitles, or too large', async () => {
+      await addSubtitles([
+        { name: 'Sintel.mp4', length: 1000 },
+        { name: 'huge.srt', length: MAX_SUBTITLE_BYTES + 1 },
+      ]);
+
+      const video = await request(app).get(
+        `/api/torrents/${HASH}/files/0/subtitles.vtt`,
+      );
+      const huge = await request(app).get(
+        `/api/torrents/${HASH}/files/1/subtitles.vtt`,
+      );
+
+      expect(video.status).toBe(400);
+      expect(huge.status).toBe(413);
+    });
+
+    it('waits for the pieces and stops reading when the request is dropped', async () => {
+      const torrent = await addSubtitles([
+        { name: 'Sintel.srt', length: 100, available: 10 },
+      ]);
+      const server = app.listen(0);
+      try {
+        const { port } = server.address() as AddressInfo;
+        const controller = new AbortController();
+        const pending = fetch(
+          `http://127.0.0.1:${port}/api/torrents/${HASH}/files/0/subtitles.vtt`,
+          { signal: controller.signal },
+        ).catch(() => 'aborted');
+        await vi.waitFor(() =>
+          expect(torrent.files[0].readStreams).toHaveLength(1),
+        );
+        controller.abort();
+        expect(await pending).toBe('aborted');
+        await vi.waitFor(() =>
+          expect(torrent.files[0].readStreams[0].stream.destroyed).toBe(true),
+        );
+      } finally {
+        server.close();
+      }
+    });
+  });
+
+  describe('POST /:infoHash/pause and /resume', () => {
+    it('pauses and resumes a torrent', async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      const torrent = client.torrents[0];
+      torrent.simulateMetadata({
+        files: [{ name: 'Sintel.mp4', length: 1000 }],
+      });
+      torrent.simulateWire();
+      torrent.simulateDownload(100, { downloadSpeed: 500 });
+      const summary = async () =>
+        (await request(app).get(`/api/torrents/${HASH}`)).body;
+      expect((await summary()).state).toBe('downloading');
+
+      const paused = await request(app).post(`/api/torrents/${HASH}/pause`);
+      expect(paused.status).toBe(204);
+      expect(torrent.numPeers).toBe(0);
+      expect(await summary()).toMatchObject({
+        state: 'paused',
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+      });
+      // Pausing twice is fine.
+      expect(
+        (await request(app).post(`/api/torrents/${HASH}/pause`)).status,
+      ).toBe(204);
+
+      const resumed = await request(app).post(`/api/torrents/${HASH}/resume`);
+      expect(resumed.status).toBe(204);
+      expect(torrent.paused).toBe(false);
+      expect(torrent.addedPeers).toEqual(['127.0.0.1:6881']);
+    });
+
+    it('refuses a failed or unknown torrent', async () => {
+      const unknown = await request(app).post(`/api/torrents/${HASH}/pause`);
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      client.torrents[0].simulateError(new Error('disk full'));
+      const failed = await request(app).post(`/api/torrents/${HASH}/resume`);
+
+      expect(unknown.status).toBe(404);
+      expect(failed.status).toBe(409);
     });
   });
 

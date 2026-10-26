@@ -13,8 +13,22 @@ import type { Torrent } from 'webtorrent';
 import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { streamFile } from './file-stream.js';
 import { isMagnetURI } from './magnet.js';
-import { type FileMedia, selectMedia } from './media.js';
-import { addTorrent, removeTorrent } from './torrent-client.js';
+import {
+  type FileMedia,
+  type MediaFileInput,
+  type MediaSelection,
+  matchSubtitles,
+  mediaKind,
+  type SubtitleMatch,
+  selectMedia,
+} from './media.js';
+import { serveSubtitle } from './subtitles.js';
+import {
+  addTorrent,
+  pauseTorrent,
+  removeTorrent,
+  resumeTorrent,
+} from './torrent-client.js';
 import {
   isVideoFile,
   mediaInputs,
@@ -68,6 +82,9 @@ export interface TorrentSummary {
   selectedLength: number | null;
   // Share of the selected bytes on disk, 0 to 1 (Decision #23).
   progress: number;
+  // Index of the file to play by default; null until the metadata arrives,
+  // and for a torrent with no video.
+  mainFile: number | null;
   numPeers: number;
   downloadSpeed: number;
   uploadSpeed: number;
@@ -88,14 +105,15 @@ export interface TorrentFileInfo extends FileMedia {
   length: number;
   // Downloading in the background, rather than only fetched while played.
   selected: boolean;
+  // For a video, the subtitle files that go with it (Decision #20); empty
+  // for anything else.
+  subtitles: SubtitleMatch[];
 }
 
-// One torrent with its files. files, mainFile and videos are null while the
-// metadata is pending; mainFile is also null when there is no video.
+// One torrent with its files. files and videos are null while the metadata
+// is pending.
 export interface TorrentDetail extends TorrentSummary {
   files: TorrentFileInfo[] | null;
-  // Index of the file to play by default.
-  mainFile: number | null;
   // Indexes of every video file, in the order to list them.
   videos: number[] | null;
 }
@@ -113,11 +131,26 @@ function hasMetadata(torrent: Torrent): boolean {
 interface Tracking {
   watch: TorrentWatch;
   selection: TorrentSelection;
+  // selectMedia() per torrent: the file list never changes once known, and
+  // the list is summarised every second.
+  media: WeakMap<Torrent, MediaSelection<MediaFileInput>>;
+}
+
+function mediaOf(
+  torrent: Torrent,
+  media: Tracking['media'],
+): MediaSelection<MediaFileInput> {
+  let result = media.get(torrent);
+  if (!result) {
+    result = selectMedia(mediaInputs(torrent));
+    media.set(torrent, result);
+  }
+  return result;
 }
 
 function summarize(
   torrent: Torrent,
-  { watch, selection }: Tracking,
+  { watch, selection, media }: Tracking,
   parsed?: ParsedTorrent,
 ): TorrentSummary {
   const selected = hasMetadata(torrent) ? selection.get(torrent) : undefined;
@@ -133,11 +166,15 @@ function summarize(
     length: hasMetadata(torrent) ? torrent.length : null,
     selectedLength: progress?.selectedLength ?? null,
     progress: progress?.progress ?? torrent.progress,
+    mainFile: hasMetadata(torrent) ? mediaOf(torrent, media).mainFile : null,
     numPeers: torrent.numPeers,
-    downloadSpeed: torrent.downloadSpeed,
-    uploadSpeed: torrent.uploadSpeed,
+    // WebTorrent's speeds are moving averages that take seconds to fall to 0
+    // after a pause, though nothing is transferring.
+    downloadSpeed: torrent.paused ? 0 : torrent.downloadSpeed,
+    uploadSpeed: torrent.paused ? 0 : torrent.uploadSpeed,
     state: torrentState({
       failed: false,
+      paused: torrent.paused,
       done: progress?.done ?? torrent.done,
       hasMetadata: hasMetadata(torrent),
       numPeers: torrent.numPeers,
@@ -152,18 +189,22 @@ function describe(torrent: Torrent, tracking: Tracking): TorrentDetail {
     return {
       ...summarize(torrent, tracking),
       files: null,
-      mainFile: null,
       videos: null,
     };
   }
   const selected = tracking.selection.get(torrent);
-  const { files, mainFile, videos } = selectMedia(
-    mediaInputs(torrent).map((file) => ({
+  const { files, videos } = mediaOf(torrent, tracking.media);
+  return {
+    ...summarize(torrent, tracking),
+    files: files.map((file) => ({
       ...file,
       selected: selected?.has(file.index) ?? false,
+      subtitles: isVideoFile(file.name)
+        ? matchSubtitles(files, file.index)
+        : [],
     })),
-  );
-  return { ...summarize(torrent, tracking), files, mainFile, videos };
+    videos,
+  };
 }
 
 function sendError(
@@ -183,7 +224,7 @@ export function torrentsRouter({
   const router = Router();
   const watch = new TorrentWatch(client);
   const selection = new TorrentSelection();
-  const tracking: Tracking = { watch, selection };
+  const tracking: Tracking = { watch, selection, media: new WeakMap() };
 
   const findTorrent = (infoHash: string): Torrent | undefined =>
     client.torrents.find((torrent) => torrent.infoHash === infoHash);
@@ -368,6 +409,39 @@ export function torrentsRouter({
     selection.selectVideo(torrent, index);
     res.status(204).end();
   });
+
+  // A subtitle file as WebVTT for a <track> (Decision #20): .vtt as is,
+  // .srt converted.
+  router.get('/:infoHash/files/:index/subtitles.vtt', (req, res) => {
+    const found = fileFromParams(req, res);
+    if (!found) return;
+    const file = found.torrent.files[found.index];
+    if (mediaKind(file.name) !== 'subtitle') {
+      return sendError(res, 400, 'Only a .srt or .vtt file has subtitles');
+    }
+    serveSubtitle(res, file);
+  });
+
+  // Pause stops all transfer for the torrent; resume picks it up again.
+  // Both are idempotent.
+  for (const [action, apply] of [
+    ['pause', pauseTorrent],
+    ['resume', resumeTorrent],
+  ] as const) {
+    router.post(`/:infoHash/${action}`, (req, res) => {
+      const found = torrentFromParams(req, res);
+      if (!found) return;
+      if (found.failed) {
+        return sendError(
+          res,
+          409,
+          'This torrent failed; add it again to retry',
+        );
+      }
+      apply(found.torrent as Torrent);
+      res.status(204).end();
+    });
+  }
 
   router.delete('/:infoHash', async (req, res) => {
     const found = torrentFromParams(req, res);

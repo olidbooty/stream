@@ -25,6 +25,7 @@
   --color-state-seeding: #137333;
   --color-state-noPeers: #8a6100;
   --color-state-error: #b42318;
+  --color-state-paused: #5b6070;
 
   /* Spacing: a 4 px scale */
   --space-1: 4px;
@@ -60,9 +61,13 @@
   --width-dialog: 28rem;
   --width-field: 18rem;
   --width-file-path: 16rem;
+  /* The player's video never takes more than this share of the window's height */
+  --height-video: 75vh;
 
   /* Overlays and dimming */
   --color-backdrop: rgb(0 0 0 / 0.45);
+  /* Letterboxing around a video, in either theme */
+  --color-video-backdrop: #000000;
   --opacity-disabled: 0.55;
   --opacity-stale: 0.6;
 }
@@ -92,6 +97,7 @@
     --color-state-seeding: #6fd08c;
     --color-state-noPeers: #f0c060;
     --color-state-error: #ff8a7a;
+    --color-state-paused: #a0a6b4;
   }
 }
 
@@ -115,4 +121,5 @@
   --color-state-seeding: #6fd08c;
   --color-state-noPeers: #f0c060;
   --color-state-error: #ff8a7a;
+  --color-state-paused: #a0a6b4;
 }

@@ -10,6 +10,7 @@ export interface TorrentRowActions {
   onToggle(expanded: boolean): void;
   onRemove(): void;
   onRetry(): void;
+  onTogglePause(): void;
 }
 
 export interface TorrentRow {
@@ -18,7 +19,7 @@ export interface TorrentRow {
   update(torrent: TorrentSummary): void;
   // Replaces what the expanded area shows: a file list or a short note.
   setFiles(content: Node): void;
-  // An error from Remove or Retry, or null to clear it.
+  // An error from Pause, Resume, Remove or Retry, or null to clear it.
   setActionError(message: string | null): void;
 }
 
@@ -74,6 +75,10 @@ export function torrentRow(
   actionError.hidden = true;
   // Opens the player on the main video; shown once there is one to play.
   const play = linkButton({ label: 'Play', href: '#', variant: 'primary' });
+  const pause = button({
+    label: 'Pause',
+    onClick: () => actions.onTogglePause(),
+  });
   const retry = button({ label: 'Retry', onClick: () => actions.onRetry() });
   const remove = button({
     label: 'Remove',
@@ -94,7 +99,7 @@ export function torrentRow(
     statsLine,
     errorLine,
     actionError,
-    el('div', { className: 'torrent__actions' }, play, retry, remove),
+    el('div', { className: 'torrent__actions' }, play, pause, retry, remove),
     files,
   );
 
@@ -122,6 +127,8 @@ export function torrentRow(
       errorLine.textContent = failed ? (torrent.errorMessage ?? '') : '';
       errorLine.hidden = !failed;
       retry.hidden = !failed;
+      pause.hidden = failed;
+      pause.textContent = torrent.state === 'paused' ? 'Resume' : 'Pause';
       const playable = !failed && torrent.mainFile !== null;
       play.hidden = !playable;
       if (playable) {

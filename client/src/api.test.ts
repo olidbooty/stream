@@ -69,6 +69,18 @@ describe('createApi', () => {
     );
   });
 
+  it.each(['pause', 'resume'] as const)('posts %s', async (action) => {
+    const fetch = stub(new Response(null, { status: 204 }));
+    const api = createApi(fetch);
+    await (action === 'pause'
+      ? api.pauseTorrent(SAMPLE_HASH)
+      : api.resumeTorrent(SAMPLE_HASH));
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/torrents/${SAMPLE_HASH}/${action}`,
+      { method: 'POST' },
+    );
+  });
+
   it("throws the server's error message with the status", async () => {
     const fetch = stub(
       respond(409, { error: 'This torrent has already been added' }),

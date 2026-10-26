@@ -16,6 +16,7 @@ const HASH = '0123456789abcdef0123456789abcdef01234567';
 describe('torrentState', () => {
   const base: TorrentStateInput = {
     failed: false,
+    paused: false,
     done: false,
     hasMetadata: false,
     numPeers: 0,
@@ -62,9 +63,24 @@ describe('torrentState', () => {
       { hasMetadata: true, done: true, noPeersReported: true },
     ],
     [
+      'a paused download',
+      'paused',
+      { paused: true, hasMetadata: true, noPeersReported: true },
+    ],
+    [
+      'a paused finished torrent',
+      'paused',
+      { paused: true, hasMetadata: true, done: true },
+    ],
+    [
       'a failed torrent',
       'error',
       { failed: true, hasMetadata: true, done: true },
+    ],
+    [
+      'a torrent that failed while paused',
+      'error',
+      { failed: true, paused: true },
     ],
   ])('reports %s as %s', (_label, expected, input) => {
     expect(torrentState({ ...base, ...input })).toBe(expected);

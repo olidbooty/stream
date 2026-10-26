@@ -14,7 +14,7 @@ import { type VideoPlayer, videoPlayer } from './ui/video-player.js';
 export const PEER_WAIT_MS = 5000;
 
 export interface PlayerOptions {
-  api: Pick<Api, 'getTorrent' | 'selectFile'>;
+  api: Pick<Api, 'getTorrent' | 'selectFile' | 'resumeTorrent'>;
   // Where "Back to torrents" goes: the list's address.
   backHref?: string;
   // Injected so tests can drive the timer.
@@ -187,6 +187,11 @@ export function createPlayer({
       // for this, and a failure only means slower buffering.
       if (file && isVideo(file.media) && !file.selected) {
         api.selectFile(detail.infoHash, file.index).catch(() => {});
+      }
+      // Pressing Play means the user wants the data, so a paused torrent
+      // resumes; otherwise the video would buffer forever.
+      if (file && isVideo(file.media) && detail.state === 'paused') {
+        api.resumeTorrent(detail.infoHash).catch(() => {});
       }
       show(detail, route.index);
     },

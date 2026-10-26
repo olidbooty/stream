@@ -24,6 +24,9 @@ export interface Api {
   removeTorrent(infoHash: string): Promise<void>;
   // Starts downloading another video and its subtitles (Decision #18).
   selectFile(infoHash: string, index: number): Promise<void>;
+  // Stops and restarts a torrent's transfers, keeping its data.
+  pauseTorrent(infoHash: string): Promise<void>;
+  resumeTorrent(infoHash: string): Promise<void>;
 }
 
 // URLs the <video> and <track> elements load themselves.
@@ -93,6 +96,16 @@ export function createApi(
     },
     async selectFile(infoHash, index) {
       await request(`/${encodeURIComponent(infoHash)}/files/${index}/select`, {
+        method: 'POST',
+      });
+    },
+    async pauseTorrent(infoHash) {
+      await request(`/${encodeURIComponent(infoHash)}/pause`, {
+        method: 'POST',
+      });
+    },
+    async resumeTorrent(infoHash) {
+      await request(`/${encodeURIComponent(infoHash)}/resume`, {
         method: 'POST',
       });
     },

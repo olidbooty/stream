@@ -185,6 +185,9 @@ h2 {
 .state-badge[data-tone="error"] {
   --badge-color: var(--color-state-error);
 }
+.state-badge[data-tone="paused"] {
+  --badge-color: var(--color-state-paused);
+}
 
 /* Progress bar */
 .progress {

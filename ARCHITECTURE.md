@@ -157,6 +157,7 @@ agree:
 | State | When |
 | ----- | ---- |
 | `error` | WebTorrent hit an error and destroyed the torrent |
+| `paused` | Paused by the user (see [Pausing](#pausing)), whatever else it is doing |
 | `seeding` | Every selected file is on disk (Decision #23). It keeps uploading while it is in the client, peers or not |
 | `noPeers` | No peer connected, and WebTorrent's `noPeers` check has fired since the last one did |
 | `connecting` | Looking for peers, fetching a magnet link's metadata from them, or checking data already on disk |
@@ -180,6 +181,17 @@ remembers them:
   the duplicate when one torrent is added twice at once. `addTorrent()` still
   attaches its own logging `error` listener, so torrent errors never reach the
   client's fatal handler.
+
+### Pausing
+
+Each row has a Pause/Resume button (`POST .../pause` and `.../resume`).
+WebTorrent's own `torrent.pause()` only stops new peers from connecting: wires
+that are already open keep downloading and uploading. So `pauseTorrent()` in
+`server/torrent-client.ts` also destroys every wire, remembering the addresses
+of the peers it dialled itself, and `resumeTorrent()` calls `resume()`, adds
+those peers back and re-adds the torrent's web seeds; trackers and the DHT find
+the rest. Pausing keeps the data and the selection. Opening the player on a
+paused torrent resumes it, since the video would otherwise never buffer.
 
 `GET /api/torrents/events` is a [server-sent events][sse] stream of the same
 list as `GET /api/torrents`, as `torrents` events. `EventStream`

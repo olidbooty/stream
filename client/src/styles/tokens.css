@@ -25,6 +25,7 @@
   --color-state-seeding: #137333;
   --color-state-noPeers: #8a6100;
   --color-state-error: #b42318;
+  --color-state-paused: #5b6070;
 
   /* Spacing: a 4 px scale */
   --space-1: 4px;
@@ -96,6 +97,7 @@
     --color-state-seeding: #6fd08c;
     --color-state-noPeers: #f0c060;
     --color-state-error: #ff8a7a;
+    --color-state-paused: #a0a6b4;
   }
 }
 
@@ -119,4 +121,5 @@
   --color-state-seeding: #6fd08c;
   --color-state-noPeers: #f0c060;
   --color-state-error: #ff8a7a;
+  --color-state-paused: #a0a6b4;
 }

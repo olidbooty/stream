@@ -55,6 +55,7 @@ describe('stateLabel', () => {
     ['downloading', 'downloading', 'Downloading'],
     ['seeding', 'seeding', 'Seeding'],
     ['noPeers', 'noPeers', 'No peers yet, still searching'],
+    ['paused', 'paused', 'Paused'],
     ['error', 'error', 'Failed'],
   ] as const)('labels %s', (state, tone, label) => {
     expect(stateLabel({ ...base, state })).toEqual({ tone, label });

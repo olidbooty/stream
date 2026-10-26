@@ -1196,6 +1196,49 @@ describe('/api/torrents', () => {
     });
   });
 
+  describe('POST /:infoHash/pause and /resume', () => {
+    it('pauses and resumes a torrent', async () => {
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      const torrent = client.torrents[0];
+      torrent.simulateMetadata({
+        files: [{ name: 'Sintel.mp4', length: 1000 }],
+      });
+      torrent.simulateWire();
+      torrent.simulateDownload(100, { downloadSpeed: 500 });
+      const summary = async () =>
+        (await request(app).get(`/api/torrents/${HASH}`)).body;
+      expect((await summary()).state).toBe('downloading');
+
+      const paused = await request(app).post(`/api/torrents/${HASH}/pause`);
+      expect(paused.status).toBe(204);
+      expect(torrent.numPeers).toBe(0);
+      expect(await summary()).toMatchObject({
+        state: 'paused',
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+      });
+      // Pausing twice is fine.
+      expect(
+        (await request(app).post(`/api/torrents/${HASH}/pause`)).status,
+      ).toBe(204);
+
+      const resumed = await request(app).post(`/api/torrents/${HASH}/resume`);
+      expect(resumed.status).toBe(204);
+      expect(torrent.paused).toBe(false);
+      expect(torrent.addedPeers).toEqual(['127.0.0.1:6881']);
+    });
+
+    it('refuses a failed or unknown torrent', async () => {
+      const unknown = await request(app).post(`/api/torrents/${HASH}/pause`);
+      await request(app).post('/api/torrents').send({ magnet: MAGNET });
+      client.torrents[0].simulateError(new Error('disk full'));
+      const failed = await request(app).post(`/api/torrents/${HASH}/resume`);
+
+      expect(unknown.status).toBe(404);
+      expect(failed.status).toBe(409);
+    });
+  });
+
   describe('DELETE /:infoHash', () => {
     it('removes the torrent and deletes its files', async () => {
       await request(app).post('/api/torrents').send({ magnet: MAGNET });

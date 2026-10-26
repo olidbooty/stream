@@ -51,6 +51,8 @@ export function stateLabel(
       return { tone: 'noPeers', label: 'No peers yet, still searching' };
     case 'error':
       return { tone: 'error', label: 'Failed' };
+    case 'paused':
+      return { tone: 'paused', label: 'Paused' };
   }
 }
 

@@ -64,6 +64,13 @@ const seeding = sampleSummary({
   state: 'seeding',
 });
 
+const paused = sampleSummary({
+  state: 'paused',
+  numPeers: 0,
+  downloadSpeed: 0,
+  uploadSpeed: 0,
+});
+
 // Every badge tone. A Record, so a new tone doesn't type-check until it is
 // shown here too.
 const BADGE_TORRENTS: Record<StateLabel['tone'], TorrentSummary> = {
@@ -72,6 +79,7 @@ const BADGE_TORRENTS: Record<StateLabel['tone'], TorrentSummary> = {
   downloading: sampleSummary(),
   seeding,
   noPeers: sampleSummary({ ...pendingMagnet, state: 'noPeers' }),
+  paused,
   error: failed,
 };
 
@@ -84,6 +92,8 @@ const stubApi = {
     return sampleDetail({ infoHash });
   },
   async removeTorrent() {},
+  async pauseTorrent() {},
+  async resumeTorrent() {},
   async addMagnet(): Promise<TorrentSummary> {
     throw new ApiError(409, 'This torrent has already been added');
   },
@@ -100,6 +110,7 @@ function row(
     onToggle: () => {},
     onRemove: () => {},
     onRetry: () => {},
+    onTogglePause: () => {},
   });
   setUp(r);
   // Rows are list items; the list supplies their spacing.
@@ -259,6 +270,11 @@ export const entries: GalleryEntry[] = [
     component: 'Torrent row',
     state: 'seeding',
     render: () => row(seeding),
+  },
+  {
+    component: 'Torrent row',
+    state: 'paused, with Resume',
+    render: () => row(paused),
   },
   {
     component: 'Torrent row',

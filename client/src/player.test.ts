@@ -19,6 +19,7 @@ function setup() {
   const api = {
     getTorrent: vi.fn().mockResolvedValue(sampleDetail()),
     selectFile: vi.fn().mockResolvedValue(undefined),
+    resumeTorrent: vi.fn().mockResolvedValue(undefined),
   };
   const player = createPlayer({ api });
   document.body.append(player.element);
@@ -65,6 +66,19 @@ describe('createPlayer', () => {
 
     expect(api.selectFile).toHaveBeenCalledWith(SAMPLE_HASH, 2);
     expect(video().getAttribute('src')).toContain('/files/2/stream');
+  });
+
+  it('resumes a paused torrent, and only a paused one', async () => {
+    const { api, player } = setup();
+    await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+    expect(api.resumeTorrent).not.toHaveBeenCalled();
+
+    api.getTorrent.mockResolvedValueOnce(sampleDetail({ state: 'paused' }));
+    api.resumeTorrent.mockRejectedValueOnce(new ApiError(500, 'nope'));
+    await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+
+    expect(api.resumeTorrent).toHaveBeenCalledWith(SAMPLE_HASH);
+    expect(video()).not.toBeNull();
   });
 
   it('still plays when selecting fails', async () => {

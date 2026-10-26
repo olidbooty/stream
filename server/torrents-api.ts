@@ -23,7 +23,12 @@ import {
   selectMedia,
 } from './media.js';
 import { serveSubtitle } from './subtitles.js';
-import { addTorrent, removeTorrent } from './torrent-client.js';
+import {
+  addTorrent,
+  pauseTorrent,
+  removeTorrent,
+  resumeTorrent,
+} from './torrent-client.js';
 import {
   isVideoFile,
   mediaInputs,
@@ -163,10 +168,13 @@ function summarize(
     progress: progress?.progress ?? torrent.progress,
     mainFile: hasMetadata(torrent) ? mediaOf(torrent, media).mainFile : null,
     numPeers: torrent.numPeers,
-    downloadSpeed: torrent.downloadSpeed,
-    uploadSpeed: torrent.uploadSpeed,
+    // WebTorrent's speeds are moving averages that take seconds to fall to 0
+    // after a pause, though nothing is transferring.
+    downloadSpeed: torrent.paused ? 0 : torrent.downloadSpeed,
+    uploadSpeed: torrent.paused ? 0 : torrent.uploadSpeed,
     state: torrentState({
       failed: false,
+      paused: torrent.paused,
       done: progress?.done ?? torrent.done,
       hasMetadata: hasMetadata(torrent),
       numPeers: torrent.numPeers,
@@ -413,6 +421,27 @@ export function torrentsRouter({
     }
     serveSubtitle(res, file);
   });
+
+  // Pause stops all transfer for the torrent; resume picks it up again.
+  // Both are idempotent.
+  for (const [action, apply] of [
+    ['pause', pauseTorrent],
+    ['resume', resumeTorrent],
+  ] as const) {
+    router.post(`/:infoHash/${action}`, (req, res) => {
+      const found = torrentFromParams(req, res);
+      if (!found) return;
+      if (found.failed) {
+        return sendError(
+          res,
+          409,
+          'This torrent failed; add it again to retry',
+        );
+      }
+      apply(found.torrent as Torrent);
+      res.status(204).end();
+    });
+  }
 
   router.delete('/:infoHash', async (req, res) => {
     const found = torrentFromParams(req, res);

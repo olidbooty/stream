@@ -11,6 +11,8 @@ function setup() {
     getTorrent: vi.fn().mockResolvedValue(sampleDetail()),
     removeTorrent: vi.fn().mockResolvedValue(undefined),
     addMagnet: vi.fn().mockResolvedValue(sampleSummary()),
+    pauseTorrent: vi.fn().mockResolvedValue(undefined),
+    resumeTorrent: vi.fn().mockResolvedValue(undefined),
   };
   const confirm = vi.fn().mockResolvedValue(true);
   const onChanged = vi.fn();
@@ -357,6 +359,54 @@ describe('torrentList', () => {
           'This torrent failed, so it has no files.',
         ),
       );
+    });
+  });
+
+  describe('Pause and Resume', () => {
+    const paused = sampleSummary({ state: 'paused', numPeers: 0 });
+
+    it('pauses a running torrent', async () => {
+      const { api, onChanged, list } = setup();
+      list.update([sampleSummary()]);
+      row().button('Pause').click();
+
+      await vi.waitFor(() => expect(onChanged).toHaveBeenCalled());
+      expect(api.pauseTorrent).toHaveBeenCalledWith(SAMPLE_HASH);
+      expect(api.resumeTorrent).not.toHaveBeenCalled();
+    });
+
+    it('offers Resume once paused and resumes it', async () => {
+      const { api, onChanged, list } = setup();
+      list.update([sampleSummary()]);
+      list.update([paused]);
+      expect(row().badge.textContent).toBe('Paused');
+      expect(row().button('Pause')).toBeUndefined();
+      row().button('Resume').click();
+
+      await vi.waitFor(() => expect(onChanged).toHaveBeenCalled());
+      expect(api.resumeTorrent).toHaveBeenCalledWith(SAMPLE_HASH);
+    });
+
+    it('hides it for a failed torrent', () => {
+      const { list } = setup();
+      list.update([sampleSummary({ state: 'error', errorMessage: 'x' })]);
+      expect(row().button('Pause').hidden).toBe(true);
+    });
+
+    it('shows why it could not pause', async () => {
+      const { api, onChanged, list } = setup();
+      api.pauseTorrent.mockRejectedValue(
+        new ApiError(409, 'This torrent failed; add it again to retry'),
+      );
+      list.update([sampleSummary()]);
+      row().button('Pause').click();
+
+      await vi.waitFor(() =>
+        expect(row().element.querySelector('[role="alert"]')?.textContent).toBe(
+          "Couldn't pause it: This torrent failed; add it again to retry",
+        ),
+      );
+      expect(onChanged).not.toHaveBeenCalled();
     });
   });
 

@@ -162,6 +162,43 @@ export function addTorrent(
   return torrent;
 }
 
+// Peers to reconnect to when a paused torrent resumes.
+const pausedPeers = new WeakMap<Torrent, string[]>();
+
+// WebTorrent's own pause() only stops new connections: peers already
+// connected keep downloading and uploading. So pausing also drops them,
+// remembering the ones we dialled so Resume can call them back at once
+// rather than waiting minutes for the DHT and trackers. Incoming peers'
+// ports are ephemeral, so they aren't kept.
+export function pauseTorrent(torrent: Torrent): void {
+  if (torrent.paused) return;
+  torrent.pause();
+  pausedPeers.set(
+    torrent,
+    torrent.wires
+      .filter(
+        (wire) =>
+          wire.type.endsWith('Outgoing') &&
+          wire.remoteAddress &&
+          wire.remotePort,
+      )
+      .map((wire) => `${wire.remoteAddress}:${wire.remotePort}`),
+  );
+  for (const wire of [...torrent.wires]) wire.destroy();
+}
+
+export function resumeTorrent(torrent: Torrent): void {
+  if (!torrent.paused) return;
+  torrent.resume();
+  for (const address of pausedPeers.get(torrent) ?? []) {
+    torrent.addPeer(address);
+  }
+  pausedPeers.delete(torrent);
+  // Web seeds are wires too, so pausing dropped them; adding one that is
+  // still there is ignored.
+  for (const url of torrent.urlList ?? []) torrent.addWebSeed(url);
+}
+
 // client.remove() rejects for an unknown torrent but reports the destroy through
 // its callback, so wait for both.
 export function removeTorrent(

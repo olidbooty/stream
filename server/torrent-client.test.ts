@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
+import type { Torrent } from 'webtorrent';
 import { type FakeTorrent, FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import {
   addTorrent,
@@ -18,8 +19,10 @@ import {
   DHT_BOOTSTRAP,
   destroyTorrentClient,
   ensureDownloadDir,
+  pauseTorrent,
   peerTransports,
   removeTorrent,
+  resumeTorrent,
   torrentConfig,
 } from './torrent-client.js';
 
@@ -279,5 +282,55 @@ describe('destroyTorrentClient', () => {
     expect(fake.destroyed).toBe(true);
     expect(fake.listening).toBe(false);
     expect(torrent.destroyed).toBe(true);
+  });
+});
+
+describe('pauseTorrent and resumeTorrent', () => {
+  function connected() {
+    const fake = new FakeWebTorrent();
+    const torrent = fake.add(MAGNET);
+    torrent.urlList = ['https://seed.example.com/'];
+    torrent.simulateWire('203.0.113.5:6881', 'tcpOutgoing');
+    torrent.simulateWire('[2001:db8::1]:51413', 'utpOutgoing');
+    torrent.simulateWire('198.51.100.7:40123', 'tcpIncoming');
+    torrent.simulateWire('https://seed.example.com/', 'webSeed');
+    return torrent;
+  }
+
+  it('drops every peer and refuses new ones while paused', () => {
+    const torrent = connected();
+
+    pauseTorrent(torrent as unknown as Torrent);
+
+    expect(torrent.paused).toBe(true);
+    expect(torrent.wires).toEqual([]);
+    expect(torrent.numPeers).toBe(0);
+    expect(torrent.addPeer('192.0.2.1:6881')).toBe(false);
+  });
+
+  it('calls back the peers it dialled and the web seeds on resume', () => {
+    const torrent = connected();
+    pauseTorrent(torrent as unknown as Torrent);
+
+    resumeTorrent(torrent as unknown as Torrent);
+
+    expect(torrent.paused).toBe(false);
+    expect(torrent.addedPeers).toEqual([
+      '203.0.113.5:6881',
+      '[2001:db8::1]:51413',
+    ]);
+    expect(torrent.addedWebSeeds).toEqual(['https://seed.example.com/']);
+  });
+
+  it('does nothing when already in that state', () => {
+    const torrent = connected();
+
+    resumeTorrent(torrent as unknown as Torrent);
+    pauseTorrent(torrent as unknown as Torrent);
+    torrent.simulateWire();
+    pauseTorrent(torrent as unknown as Torrent);
+
+    expect(torrent.addedPeers).toEqual([]);
+    expect(torrent.wires).toHaveLength(1);
   });
 });

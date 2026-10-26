@@ -12,9 +12,11 @@ Node.js 24 LTS or newer (see `.nvmrc`).
 
 ```sh
 npm install
-npm run build   # bundle client/ into public/
-npm start       # serve public/ on http://localhost:1234
+npm start       # build client/ into public/, then serve it on http://localhost:1234
 ```
+
+`npm start` runs `npm run build` first (the `prestart` script), so the server
+never serves a stale or missing `public/`.
 
 The server binds to `0.0.0.0`, so other devices on your network can open the
 LAN URLs it prints at startup. Set `HOST=127.0.0.1` to keep it local, or
@@ -230,7 +232,7 @@ biome.json                Biome lint and format config
 
 | Script               | What it does                         |
 | -------------------- | ------------------------------------ |
-| `npm start`          | Run the Express server (via tsx)     |
+| `npm start`          | Build the frontend, then run the Express server (via tsx) |
 | `npm run dev`        | Vite dev server                      |
 | `npm run build`      | Build the frontend into `public/`    |
 | `npm run build:gallery` | Build the component gallery into `dist-gallery/` |

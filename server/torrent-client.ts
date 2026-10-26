@@ -7,6 +7,7 @@ import type { Instance as ParsedTorrent } from 'parse-torrent';
 import wrtc from 'webrtc-polyfill';
 import WebTorrent, { type Torrent } from 'webtorrent';
 import { repairPeerAddress } from './peer-address.js';
+import { guardPeerHandshake } from './peer-handshake.js';
 
 export const DEFAULT_DOWNLOAD_DIR = fileURLToPath(
   new URL('../downloads', import.meta.url),
@@ -109,6 +110,7 @@ export function createTorrentClient({
   // IPv4 socket. Node returns the resolver's first address, often IPv6, and
   // the send fails silently, so the DHT starts with no nodes (Decision #28).
   setDefaultResultOrder('ipv4first');
+  guardPeerHandshake();
   return new WebTorrent({
     torrentPort,
     dhtPort,

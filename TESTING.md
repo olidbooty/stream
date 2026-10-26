@@ -113,7 +113,10 @@ that makes `node-datachannel` fail, and checks that `webtorrent` loads with
 ## Mocking WebTorrent
 
 Unit tests never join a real swarm: it would open ports, depend on the
-network and be slow. Use the shared fake in `test/mocks/webtorrent.ts`.
+network and be slow. Use the shared fake in `test/mocks/webtorrent.ts`. The
+exception is `server/peer-handshake.test.ts`, which checks a fix inside
+WebTorrent's own peer code: it runs a real client with DHT, trackers and LSD
+off and dials it over loopback.
 Prefer passing a `new FakeWebTorrent()` to the code under test (see
 [Server tests](#server-tests)). Where code creates the client itself,
 replace the module:
@@ -218,7 +221,7 @@ Peer connectivity, playback and codecs can only be checked with the real
 client and a real browser. Until 4.5 adds a Playwright test, check them by
 hand:
 
-1. `npm run build && npm start`, then open `http://localhost:1234`. Use
+1. `npm start` (it builds first), then open `http://localhost:1234`. Use
    `npm run dev` for quick UI work, but check playback against the built
    app served by Express.
 2. Test both kinds of swarm the server should reach:

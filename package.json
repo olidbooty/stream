@@ -8,6 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "prestart": "npm run build",
     "start": "tsx server/index.ts",
     "dev": "vite",
     "build": "vite build",

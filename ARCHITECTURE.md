@@ -89,14 +89,15 @@ each file and picks the one to play. It is a pure function of the file list
   `.webm` are `video`: every current browser plays them with common codecs.
   `.mkv`, `.avi`, `.mov`, `.ogv` and other video containers are
   `video-may-not-play` and still listed (Decision #3): Chrome often plays
-  `.mkv` with H.264 or VP9, and 4.2 will show the real error when it doesn't.
+  `.mkv` with H.264 or VP9, and the player (4.2a) shows the real error when it doesn't.
   `.ogv` is in this group because Safari has never played Ogg and Chrome has
   deprecated Theora. `.srt` and `.vtt` are flagged as `subtitle` for 3.4.
   The full list is in the [README](README.md#api).
 - **No codec checks yet.** The 4.1 audit (Decision #5) was meant to inform
   this filter but hasn't run: it needs `ffprobe` and real files. So an
   `.mp4` holding HEVC or AC-3 audio is still reported as `video`. Codec-level
-  checks come with 4.1 and 4.2 (Decision #17).
+  checks come with 4.1 and 4.2b (Decision #17); 4.2a only reports what the
+  browser says.
 - **Samples.** A video with the word `sample` or `samples` in its path that
   is under a quarter of the size of the largest video is a `sample`. The
   size check keeps a film called "The Sample" from being skipped, and a
@@ -246,8 +247,9 @@ needs as arguments, so it can be tested in jsdom (see
 | `torrent-list.ts` | One row per torrent, keyed by info hash and updated in place, so the once-a-second updates never rebuild what the user is focused on. A row fetches `GET /api/torrents/:infoHash` when it is expanded, and again only when its metadata arrives. Remove asks first, since it deletes the files; Retry adds a failed torrent's magnet link again (Decision #22) |
 | `live-updates.ts` | The page's event stream (above) |
 | `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24); subtitle track names and the player's stats line |
+| `media-error.ts` | The player's messages for each `MediaError` code and for a sound-only video (step 4.2a), as pure functions |
 | `player-route.ts` | The player's address, `#play/<infoHash>/<index>`. `main.ts` shows the list or the player on `hashchange`, so Back closes the player and a link opens it on another device |
-| `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and an error naming the file. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) |
+| `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and, from 4.2a, a message per `MediaError` code naming the file and its container (`media-error.ts`): not supported, can't decode, or cut off with a Retry that reloads the stream and seeks back. A video whose metadata loads with `videoWidth` 0 gets a sound-only warning. Errors and the warning use the status banner's look and stay up through later `playing` events until the next load. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) |
 
 Response types are imported from `server/torrents-api.ts` with `import type`,
 which the build erases, so the client and server can't drift apart.
@@ -604,7 +606,7 @@ design stays next to the code.
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |
-| 17 | Media classification is by extension only | Decided | The browser decides: in 4.2 the player reports the `<video>` error with the file name and container. If `ffprobe` is installed, the server also probes codecs through the stream URL (only the header pieces are fetched) so the UI can warn before playing; it stays optional. Extension-only classification remains the first guess |
+| 17 | Media classification is by extension only | Decided | The browser decides: the player reports the `<video>` error with the file name and container (done in 4.2a). If `ffprobe` is installed, the server also probes codecs through the stream URL (only the header pieces are fetched) so the UI can warn before playing; it stays optional. Extension-only classification remains the first guess |
 | 18 | Whole torrent is downloaded, not just the chosen file | Decided | Download the chosen video and its subtitles only: add torrents with `deselect: true`, then select `mainFile` and its subtitles; picking another video selects it too. Streaming still fetches any range played. Implemented in 3.3 |
 | 19 | Main-file heuristics are unproven | Decided | Accepted for now: a sample is under 25% of the largest video, main-sized is at least a third. `.ts` (MPEG-TS) also matches TypeScript sources, and video inside `.rar`/`.zip` isn't found. Revisit after the manual tests with real torrents. See [Choosing the media file](#choosing-the-media-file) |
 | 20 | Subtitles need work before playback | Decided | Serve `.vtt` as is and convert `.srt` to WebVTT on the server (UTF-8, falling back to Windows-1252). Match subtitles to a video by file name with an optional language code (`Sintel.en.srt` → `Sintel.mp4`, `en`). No `.ass`/`.ssa` or embedded MKV subtitles in M4. Implemented in 3.4: `GET .../files/:index/subtitles.vtt` (`server/subtitles.ts`) serves them, files above 2 MiB get `413`, and the player adds one `<track>` per match |

@@ -235,6 +235,21 @@ h2 {
   background: var(--color-state-error);
 }
 
+/* Something still works, such as the sound of a video without its picture. */
+.status-banner[data-tone="warning"] {
+  border-color: var(--color-state-noPeers);
+  color: var(--color-state-noPeers);
+}
+
+.status-banner[data-tone="warning"]::before {
+  background: var(--color-state-noPeers);
+}
+
+/* An action such as Retry sits at the end of the line. */
+.status-banner .button {
+  margin-inline-start: auto;
+}
+
 /* Torrent list and rows */
 .torrent-list__items {
   display: grid;
@@ -399,13 +414,9 @@ h2 {
   background: var(--color-video-backdrop);
 }
 
-.video-player__status {
+.video-player__status[data-tone="info"] {
   margin: 0;
   color: var(--color-state-connecting);
-}
-
-.video-player__status[data-tone="error"] {
-  color: var(--color-state-error);
 }
 
 .video-player__stats {

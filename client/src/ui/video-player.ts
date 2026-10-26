@@ -1,4 +1,4 @@
-import { linkButton } from './button.js';
+import { button, linkButton } from './button.js';
 import { el } from './dom.js';
 
 export interface VideoTrack {
@@ -17,13 +17,25 @@ export interface VideoPlayerOptions {
   backHref: string;
 }
 
-export type PlayerStatusTone = 'info' | 'error';
+// `info` for passing states such as buffering; `warning` and `error` show
+// as a status banner, `warning` while something still plays.
+export type PlayerStatusTone = 'info' | 'warning' | 'error';
+
+// A button after the status message, such as Retry.
+export interface PlayerStatusAction {
+  label: string;
+  onClick(): void;
+}
 
 export interface VideoPlayer {
   element: HTMLElement;
   video: HTMLVideoElement;
   // A short line over the playback state, or null to clear it.
-  setStatus(message: string | null, tone?: PlayerStatusTone): void;
+  setStatus(
+    message: string | null,
+    tone?: PlayerStatusTone,
+    action?: PlayerStatusAction,
+  ): void;
   setStats(text: string): void;
 }
 
@@ -76,8 +88,15 @@ export function videoPlayer({
   return {
     element,
     video,
-    setStatus(message, tone = 'info') {
-      status.textContent = message ?? '';
+    setStatus(message, tone = 'info', action) {
+      status.replaceChildren(message ?? '');
+      if (message !== null && action) {
+        status.append(button({ label: action.label, onClick: action.onClick }));
+      }
+      status.className =
+        tone === 'info'
+          ? 'video-player__status'
+          : 'video-player__status status-banner';
       status.dataset.tone = tone;
       status.hidden = message === null;
     },

@@ -3,10 +3,12 @@ import { ApiError } from './api.js';
 import { createPlayer, PEER_WAIT_MS } from './player.js';
 import { SAMPLE_HASH, sampleDetail, sampleSummary } from './sample-data.js';
 
-// jsdom can't play media: load() and pause() only log "not implemented".
+// jsdom can't play media: load(), pause() and play() only log "not
+// implemented".
 beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -194,7 +196,7 @@ describe('createPlayer', () => {
       expect(status().hidden).toBe(true);
     });
 
-    it('reports a playback error with the file name', async () => {
+    it('reports an unsupported file with its name and container', async () => {
       const { player } = setup();
       await player.open({ infoHash: SAMPLE_HASH, index: 1 });
       Object.defineProperty(video(), 'error', { value: { code: 4 } });
@@ -202,9 +204,87 @@ describe('createPlayer', () => {
       fire('error');
 
       expect(status().textContent).toBe(
-        "This video can't be played: Sintel.mp4",
+        "This browser can't play Sintel.mp4. It doesn't support the MP4 format or the codecs inside it.",
       );
       expect(status().dataset.tone).toBe('error');
+      expect(status().classList).toContain('status-banner');
+      expect(status().querySelector('button')).toBeNull();
+    });
+
+    it('keeps an error up when buffering events follow', async () => {
+      vi.useFakeTimers();
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      fire('waiting');
+      Object.defineProperty(video(), 'error', { value: { code: 3 } });
+
+      fire('error');
+      vi.advanceTimersByTime(PEER_WAIT_MS);
+
+      expect(status().textContent).toContain("couldn't decode it");
+      // Chrome fires `playing` when Play is pressed on a failed stream.
+      fire('playing');
+      expect(status().textContent).toContain("couldn't decode it");
+    });
+
+    it('retries a cut-off stream from where it stopped', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      const load = vi.mocked(HTMLMediaElement.prototype.load);
+      load.mockClear();
+      video().currentTime = 42;
+      Object.defineProperty(video(), 'error', { value: { code: 2 } });
+
+      fire('error');
+      const retry = status().querySelector('button');
+      expect(retry?.textContent).toBe('Retry');
+      retry?.click();
+
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(video().getAttribute('src')).toBe(
+        `/api/torrents/${SAMPLE_HASH}/files/1/stream`,
+      );
+      // A real load() resets the position and fires these.
+      video().currentTime = 0;
+      fire('loadstart');
+      expect(status().textContent).toBe('Loading…');
+      Object.defineProperty(video(), 'videoWidth', { value: 640 });
+      fire('loadedmetadata');
+      expect(video().currentTime).toBe(42);
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+      fire('canplay');
+      expect(status().hidden).toBe(true);
+    });
+
+    it('does not jump or play on its own without a retry', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      Object.defineProperty(video(), 'videoWidth', { value: 640 });
+
+      fire('loadedmetadata');
+
+      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+      expect(status().hidden).toBe(true);
+    });
+
+    it('warns when only the sound plays, and keeps the warning', async () => {
+      const { player } = setup();
+      await player.open({ infoHash: SAMPLE_HASH, index: 1 });
+      // jsdom's videoWidth is always 0, as for a picture the browser can't
+      // decode.
+      fire('loadedmetadata');
+
+      expect(status().textContent).toContain(
+        'Only the sound of Sintel.mp4 will play.',
+      );
+      expect(status().dataset.tone).toBe('warning');
+
+      fire('waiting');
+      expect(status().textContent).toBe('Buffering…');
+      expect(status().classList).not.toContain('status-banner');
+      fire('playing');
+      expect(status().dataset.tone).toBe('warning');
+      expect(status().textContent).toContain('Only the sound');
     });
 
     it('ignores the abort that closing causes', async () => {

@@ -2,6 +2,14 @@ import type { TorrentSummary } from '../../../server/torrents-api.js';
 import { ApiError } from '../api.js';
 import { playerStats, type StateLabel, stateLabel } from '../format.js';
 import { STATUS_MESSAGES } from '../live-updates.js';
+import {
+  MEDIA_ERR_DECODE,
+  MEDIA_ERR_NETWORK,
+  MEDIA_ERR_SRC_NOT_SUPPORTED,
+  mediaErrorProblem,
+  type PlaybackProblem,
+  pictureMissingProblem,
+} from '../media-error.js';
 import { sampleDetail, sampleSummary } from '../sample-data.js';
 import { torrentForm } from '../torrent-form.js';
 import { torrentList } from '../torrent-list.js';
@@ -14,7 +22,11 @@ import { progressBar, updateProgressBar } from '../ui/progress-bar.js';
 import { stateBadge, updateStateBadge } from '../ui/state-badge.js';
 import { statusBanner } from '../ui/status-banner.js';
 import { torrentRow } from '../ui/torrent-row.js';
-import { type PlayerStatusTone, videoPlayer } from '../ui/video-player.js';
+import {
+  type PlayerStatusAction,
+  type PlayerStatusTone,
+  videoPlayer,
+} from '../ui/video-player.js';
 
 // One component in one state, rendered from sample data with no server.
 export interface GalleryEntry {
@@ -130,15 +142,25 @@ function player(
   status: string | null,
   tone: PlayerStatusTone = 'info',
   tracks = [{ src: EMPTY_VTT, language: 'de', label: 'German' }],
+  action?: PlayerStatusAction,
+  title = 'Sintel.mp4',
 ): HTMLElement {
-  const p = videoPlayer({
-    title: 'Sintel.mp4',
-    tracks,
-    backHref: '#',
-  });
-  p.setStatus(status, tone);
+  const p = videoPlayer({ title, tracks, backHref: '#' });
+  p.setStatus(status, tone, action);
   p.setStats(playerStats(sampleSummary()));
   return p.element;
+}
+
+// The player showing what step 4.2a says about a file it can't play.
+function problemPlayer(problem: PlaybackProblem | null, title: string) {
+  if (!problem) throw new Error('no message for this error');
+  return player(
+    problem.message,
+    problem.tone,
+    [],
+    problem.retry ? { label: 'Retry', onClick: () => {} } : undefined,
+    title,
+  );
 }
 
 function filesNote(text: string): HTMLElement {
@@ -317,8 +339,36 @@ export const entries: GalleryEntry[] = [
   },
   {
     component: 'Video player',
-    state: 'error',
-    render: () => player("This video can't be played: Sintel.mkv", 'error'),
+    state: 'format not supported',
+    render: () =>
+      problemPlayer(
+        mediaErrorProblem(MEDIA_ERR_SRC_NOT_SUPPORTED, 'Sintel.mkv'),
+        'Sintel.mkv',
+      ),
+  },
+  {
+    component: 'Video player',
+    state: 'decode error',
+    render: () =>
+      problemPlayer(
+        mediaErrorProblem(MEDIA_ERR_DECODE, 'Sintel.mp4'),
+        'Sintel.mp4',
+      ),
+  },
+  {
+    component: 'Video player',
+    state: 'stream cut off, with Retry',
+    render: () =>
+      problemPlayer(
+        mediaErrorProblem(MEDIA_ERR_NETWORK, 'Sintel.mp4'),
+        'Sintel.mp4',
+      ),
+  },
+  {
+    component: 'Video player',
+    state: 'sound only',
+    render: () =>
+      problemPlayer(pictureMissingProblem('Sintel.mkv'), 'Sintel.mkv'),
   },
   ...(['reconnecting', 'unavailable'] as const).map((status) => ({
     component: 'Status banner',

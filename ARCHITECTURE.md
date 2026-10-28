@@ -247,9 +247,10 @@ needs as arguments, so it can be tested in jsdom (see
 | `torrent-list.ts` | One row per torrent, keyed by info hash and updated in place, so the once-a-second updates never rebuild what the user is focused on. A row fetches `GET /api/torrents/:infoHash` when it is expanded, and again only when its metadata arrives. Remove asks first, since it deletes the files; Retry adds a failed torrent's magnet link again (Decision #22) |
 | `live-updates.ts` | The page's event stream (above) |
 | `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24); subtitle track names and the player's stats line |
+| `buffer-health.ts` | Step 3.5, as pure functions: seconds buffered ahead of the playhead from `video.buffered`, the video's average bitrate (file size over duration), and whether the download is too slow to keep up. See [Buffer health](#buffer-health) |
 | `media-error.ts` | The player's messages for each `MediaError` code and for a sound-only video (step 4.2a), as pure functions |
 | `player-route.ts` | The player's address, `#play/<infoHash>/<index>`. `main.ts` shows the list or the player on `hashchange`, so Back closes the player and a link opens it on another device |
-| `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and, from 4.2a, a message per `MediaError` code naming the file and its container (`media-error.ts`): not supported, can't decode, or cut off with a Retry that reloads the stream and seeks back. A video whose metadata loads with `videoWidth` 0 gets a sound-only warning. Errors and the warning use the status banner's look and stay up through later `playing` events until the next load. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) |
+| `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and, from 4.2a, a message per `MediaError` code naming the file and its container (`media-error.ts`): not supported, can't decode, or cut off with a Retry that reloads the stream and seeks back. A video whose metadata loads with `videoWidth` 0 gets a sound-only warning. Errors and the warning use the status banner's look and stay up through later `playing` events until the next load. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) and, from 3.5, adds the seconds buffered ahead; a separate warning line says when the download is slower than the video ([Buffer health](#buffer-health)) |
 
 Response types are imported from `server/torrents-api.ts` with `import type`,
 which the build erases, so the client and server can't drift apart.
@@ -536,6 +537,44 @@ manual check seeks in a large film to confirm it.
 WebTorrent also has `client.createServer()`, which serves files over HTTP on
 its own port. The Express route is used instead: one port, our own 404s, and
 it can be tested with supertest.
+
+### Buffer health
+
+Step 3.5 checked how playback behaves when peers slow down, against a local
+seeder whose upload limit was changed during playback (TESTING.md, Manual
+testing), and added what the player shows about it.
+
+- **Pre-fetching.** Two things read ahead of the playhead. Chromium keeps
+  about 20 to 30 s buffered and then stops reading the range request, so the
+  read stream only asks for pieces as playback goes on. Because the played
+  video is selected (Decision #18), WebTorrent also downloads the rest of the
+  file in order in the background, so the copy on disk runs ahead of the
+  browser's buffer: 30 s into a 240 s clip at about 2.4x its bitrate, 76 s of
+  it was on disk. When the speed dropped below the bitrate, playback carried
+  on from disk for another minute before the browser's buffer started to
+  shrink. No custom pre-fetching is needed.
+- **When the speed drops.** The buffer drains, the browser fires `waiting`
+  and the status line shows Buffering, then "Waiting for data from peers"
+  (3.4). With some data still arriving, Chromium plays in short bursts as it
+  arrives. When the speed comes back, it plays again within a second.
+- **What the player shows.** The stats line adds "N s buffered" (the range
+  around the playhead in `video.buffered`). A warning line, its own
+  `role=status` so it is announced once, appears when the download is slower
+  than the video's average bitrate (file size over duration) and less than
+  10 s is buffered, for at least 3 s, so a download ramping up when playback
+  starts doesn't flash it. It goes once 30 s are buffered, the speed catches
+  up, the buffer reaches the end of the video, or every selected file is
+  downloaded. It isn't judged before the video first plays, or while an
+  error is up. In the check it appeared 13 to 15 s before the first stall.
+  The bitrate is an average, so a variable-bitrate video can stall a little
+  earlier or later than it predicts. The data on disk ahead of the browser's
+  buffer isn't counted; while there is some, the browser refills from it and
+  the buffer doesn't fall below 10 s.
+- **A peer that sends nothing.** With the only peer's upload at 0 for 30 s,
+  WebTorrent dropped the connection and didn't dial it again, since a
+  magnet's `x.pe=` peers are only added once. In a real swarm the DHT and
+  trackers find peers again; a torrent with a single known peer stays at 0
+  peers until it is removed and added again.
 
 ### Seeding
 

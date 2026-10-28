@@ -37,10 +37,13 @@ export interface VideoPlayer {
     action?: PlayerStatusAction,
   ): void;
   setStats(text: string): void;
+  // A warning that the download isn't keeping up (step 3.5), or null.
+  setHealth(message: string | null): void;
 }
 
 // The player view: a native <video> with controls, its subtitle tracks, a
-// status line for buffering and errors, and the download's stats. Plain data
+// status line for buffering and errors, a buffer health warning, and the
+// download's stats. Plain data
 // in, elements out; player.ts wires it to the media events and the API.
 export function videoPlayer({
   title,
@@ -69,6 +72,13 @@ export function videoPlayer({
     attrs: { role: 'status' },
   });
   status.hidden = true;
+  // Its own status, so the warning is announced once when it appears, apart
+  // from the buffering line and from the stats, which change every second.
+  const health = el('p', {
+    className: 'video-player__health status-banner',
+    attrs: { role: 'status', 'data-tone': 'warning' },
+  });
+  health.hidden = true;
   const stats = el('p', { className: 'video-player__stats' });
 
   const element = el(
@@ -82,6 +92,7 @@ export function videoPlayer({
     ),
     video,
     status,
+    health,
     stats,
   );
 
@@ -102,6 +113,12 @@ export function videoPlayer({
     },
     setStats(text) {
       stats.textContent = text;
+    },
+    setHealth(message) {
+      // Only touched on a change, so screen readers don't hear it again.
+      if (health.textContent === (message ?? '')) return;
+      health.textContent = message ?? '';
+      health.hidden = message === null;
     },
   };
 }

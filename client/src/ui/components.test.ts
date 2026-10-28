@@ -190,6 +190,26 @@ describe('videoPlayer', () => {
     expect(status.hidden).toBe(true);
   });
 
+  it('shows and hides the buffer health warning as its own status', () => {
+    const player = videoPlayer({ title: 'x', tracks: [], backHref: '#' });
+    const health = player.element.querySelector(
+      '.video-player__health',
+    ) as HTMLElement;
+    expect(health.hidden).toBe(true);
+    expect(health.getAttribute('role')).toBe('status');
+
+    player.setHealth('Slow');
+    expect(health.hidden).toBe(false);
+    expect(health.textContent).toBe('Slow');
+    const text = health.firstChild;
+    // The same message again leaves the node alone, so it isn't re-announced.
+    player.setHealth('Slow');
+    expect(health.firstChild).toBe(text);
+
+    player.setHealth(null);
+    expect(health.hidden).toBe(true);
+  });
+
   it('has no source without one', () => {
     const { video } = videoPlayer({ title: 'x', tracks: [], backHref: '#' });
     expect(video.hasAttribute('src')).toBe(false);

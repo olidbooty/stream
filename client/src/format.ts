@@ -71,17 +71,30 @@ export function trackLabel(language: string | null): string {
   }
 }
 
-// The line under the player: how the download behind it is doing.
+// "12 s", "2 min 5 s", "2 min": how much video is buffered (step 3.5).
+export function formatAhead(seconds: number): string {
+  const whole = Number.isFinite(seconds) ? Math.max(Math.floor(seconds), 0) : 0;
+  if (whole < 60) return `${whole} s`;
+  const minutes = Math.floor(whole / 60);
+  const rest = whole % 60;
+  return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+}
+
+// The line under the player: how the download behind it is doing and, once
+// the video has loaded, how many seconds are buffered ahead (step 3.5).
 export function playerStats(
   torrent: Pick<
     TorrentSummary,
     'numPeers' | 'downloadSpeed' | 'progress' | 'state'
   >,
+  ahead: number | null = null,
 ): string {
   const peers = `${torrent.numPeers} ${torrent.numPeers === 1 ? 'peer' : 'peers'}`;
   const done =
     torrent.state === 'seeding'
       ? 'Downloaded'
       : `${formatPercent(torrent.progress)} downloaded`;
-  return [done, peers, `↓ ${formatSpeed(torrent.downloadSpeed)}`].join(' · ');
+  const parts = [done, peers, `↓ ${formatSpeed(torrent.downloadSpeed)}`];
+  if (ahead !== null) parts.push(`${formatAhead(ahead)} buffered`);
+  return parts.join(' · ');
 }

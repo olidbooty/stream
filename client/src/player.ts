@@ -3,6 +3,11 @@ import type {
   TorrentSummary,
 } from '../../server/torrents-api.js';
 import { type Api, streamUrl, subtitlesUrl } from './api.js';
+import {
+  bufferedAhead,
+  isDownloadSlow,
+  slowDownloadMessage,
+} from './buffer-health.js';
 import { playerStats, trackLabel } from './format.js';
 import {
   mediaErrorProblem,
@@ -17,6 +22,9 @@ import { type VideoPlayer, videoPlayer } from './ui/video-player.js';
 // How long a <video> can sit in `waiting` before the status blames the swarm
 // rather than ordinary buffering.
 export const PEER_WAIT_MS = 5000;
+// How long the download has to stay too slow before the player warns, so a
+// download still ramping up when playback starts doesn't flash a warning.
+export const SLOW_WARN_MS = 3000;
 
 export interface PlayerOptions {
   api: Pick<Api, 'getTorrent' | 'selectFile' | 'resumeTorrent'>;
@@ -25,6 +33,8 @@ export interface PlayerOptions {
   // Injected so tests can drive the timer.
   setTimeout?: (callback: () => void, ms: number) => unknown;
   clearTimeout?: (handle: unknown) => void;
+  // Milliseconds, for SLOW_WARN_MS; injected so tests can drive it.
+  now?: () => number;
 }
 
 export interface Player {
@@ -52,11 +62,13 @@ export function createPlayer({
     globalThis.setTimeout(callback, ms),
   clearTimeout: stopTimer = (handle) =>
     globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>),
+  now = () => Date.now(),
 }: PlayerOptions): Player {
   const element = el('div', { className: 'player' });
   let current: {
-    player: VideoPlayer;
     infoHash: string;
+    // Takes the latest from the event stream.
+    refresh(torrent: TorrentSummary): void;
     cleanup(): void;
   } | null = null;
   // Bumped on every open and close, so a slow fetch for a route the user has
@@ -83,9 +95,22 @@ export function createPlayer({
   // buffering at first; still waiting after PEER_WAIT_MS, or `stalled` while
   // waiting, means data isn't arriving from peers. A video that plays only
   // its sound keeps a warning up once buffering is over; an error replaces
-  // everything (step 4.2a).
-  function wire(player: VideoPlayer, fileName: string): () => void {
+  // everything (step 4.2a). Step 3.5 adds the seconds buffered ahead to the
+  // stats line and warns while the download is slower than the video.
+  function wire(
+    player: VideoPlayer,
+    file: { name: string; length: number },
+    initial: TorrentSummary,
+  ): { refresh(torrent: TorrentSummary): void; cleanup(): void } {
     const { video } = player;
+    const fileName = file.name;
+    let torrent = initial;
+    // The download's speed is judged only once the video has played, and not
+    // while an error is up.
+    let judging = false;
+    // When the download last turned too slow, and whether the warning is up.
+    let slowSince: number | null = null;
+    let warned = false;
     let waiting = false;
     let timer: unknown = null;
     // What the status line goes back to once nothing is loading: an error,
@@ -113,10 +138,39 @@ export function createPlayer({
       timer = null;
     };
     const peersSlow = () => player.setStatus('Waiting for data from peers…');
+    const refreshHealth = () => {
+      const loaded = video.readyState >= HTMLMediaElement.HAVE_METADATA;
+      const ahead = loaded
+        ? bufferedAhead(video.buffered, video.currentTime)
+        : null;
+      player.setStats(playerStats(torrent, ahead));
+      const state = {
+        ahead: ahead ?? 0,
+        currentTime: video.currentTime,
+        duration: video.duration,
+        fileLength: file.length,
+        downloadSpeed: torrent.downloadSpeed,
+        downloaded: torrent.state === 'seeding',
+      };
+      const slow =
+        judging &&
+        ahead !== null &&
+        isDownloadSlow(state, warned || slowSince !== null);
+      if (!slow) {
+        slowSince = null;
+        warned = false;
+      } else {
+        slowSince ??= now();
+        warned = now() - slowSince >= SLOW_WARN_MS;
+      }
+      player.setHealth(warned ? slowDownloadMessage(state) : null);
+    };
     const handlers: Record<string, () => void> = {
       loadstart: () => {
         notice = null;
+        judging = false;
         player.setStatus('Loading…');
+        refreshHealth();
       },
       loadedmetadata: () => {
         if (video.videoWidth === 0) {
@@ -151,7 +205,14 @@ export function createPlayer({
         waiting = false;
         clearTimer();
         settle();
+        if (notice?.tone === 'error') return;
+        judging = true;
+        refreshHealth();
       },
+      // The buffer grows (progress) and drains (timeupdate) between the
+      // event stream's once-a-second updates.
+      progress: refreshHealth,
+      timeupdate: refreshHealth,
       error: () => {
         waiting = false;
         clearTimer();
@@ -161,12 +222,15 @@ export function createPlayer({
         // is pressed on a failed stream.
         notice = problem;
         settle();
+        judging = false;
+        refreshHealth();
       },
     };
     for (const [type, handler] of Object.entries(handlers)) {
       video.addEventListener(type, handler);
     }
-    return () => {
+    refreshHealth();
+    const cleanup = () => {
       clearTimer();
       for (const [type, handler] of Object.entries(handlers)) {
         video.removeEventListener(type, handler);
@@ -177,6 +241,13 @@ export function createPlayer({
       for (const track of video.querySelectorAll('track')) track.remove();
       video.removeAttribute('src');
       video.load();
+    };
+    return {
+      refresh(latest) {
+        torrent = latest;
+        refreshHealth();
+      },
+      cleanup,
     };
   }
 
@@ -196,13 +267,8 @@ export function createPlayer({
       })),
       backHref,
     });
-    player.setStats(playerStats(detail));
     element.replaceChildren(player.element);
-    current = {
-      player,
-      infoHash: detail.infoHash,
-      cleanup: wire(player, file.name),
-    };
+    current = { infoHash: detail.infoHash, ...wire(player, file, detail) };
   }
 
   return {
@@ -248,9 +314,9 @@ export function createPlayer({
     },
     update(torrents) {
       if (!current) return;
-      const { infoHash, player } = current;
+      const { infoHash, refresh } = current;
       const torrent = torrents.find((each) => each.infoHash === infoHash);
-      if (torrent) player.setStats(playerStats(torrent));
+      if (torrent) refresh(torrent);
     },
   };
 }

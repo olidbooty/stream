@@ -1,5 +1,6 @@
 import type { TorrentSummary } from '../../../server/torrents-api.js';
 import { ApiError } from '../api.js';
+import { isDownloadSlow, slowDownloadMessage } from '../buffer-health.js';
 import { playerStats, type StateLabel, stateLabel } from '../format.js';
 import { STATUS_MESSAGES } from '../live-updates.js';
 import {
@@ -148,6 +149,25 @@ function player(
   const p = videoPlayer({ title, tracks, backHref: '#' });
   p.setStatus(status, tone, action);
   p.setStats(playerStats(sampleSummary()));
+  return p.element;
+}
+
+// The player during playback with the buffer health of step 3.5: seconds
+// buffered in the stats line and, for a slow download, the warning.
+function bufferPlayer(ahead: number, downloadSpeed: number): HTMLElement {
+  const p = videoPlayer({ title: 'Sintel.mp4', tracks: [], backHref: '#' });
+  const torrent = sampleSummary({ downloadSpeed });
+  // Sintel.mp4: 129 MB over 888 s.
+  const state = {
+    ahead,
+    currentTime: 120,
+    duration: 888,
+    fileLength: 129_241_752,
+    downloadSpeed,
+    downloaded: false,
+  };
+  p.setStats(playerStats(torrent, ahead));
+  p.setHealth(isDownloadSlow(state, false) ? slowDownloadMessage(state) : null);
   return p.element;
 }
 
@@ -336,6 +356,21 @@ export const entries: GalleryEntry[] = [
         { src: EMPTY_VTT, language: 'en', label: 'English' },
         { src: EMPTY_VTT, language: 'pt-br', label: 'Brazilian Portuguese' },
       ]),
+  },
+  {
+    component: 'Video player',
+    state: 'playing, buffer healthy',
+    render: () => bufferPlayer(48, 1_250_000),
+  },
+  {
+    component: 'Video player',
+    state: 'download slower than the video',
+    render: () => bufferPlayer(6, 60_000),
+  },
+  {
+    component: 'Video player',
+    state: 'no data arriving',
+    render: () => bufferPlayer(3, 0),
   },
   {
     component: 'Video player',

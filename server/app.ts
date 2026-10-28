@@ -3,6 +3,7 @@ import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
 import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
 import { torrentsRouter } from './torrents-api.js';
+import { tvRouter } from './tv-playlist.js';
 
 export const DEFAULT_STATIC_DIR = fileURLToPath(
   new URL('../public', import.meta.url),
@@ -17,6 +18,8 @@ export interface AppOptions {
   // Decision #13: saves torrents across restarts, and those to add again now.
   saved?: SavedTorrents;
   restore?: readonly SavedTorrent[];
+  // The machine's LAN addresses, for the TV playlist; tests pass their own.
+  lanAddresses?: () => string[];
 }
 
 // Build the Express app without binding a port, so tests can drive it with supertest.
@@ -26,6 +29,7 @@ export function createApp({
   staticDir = DEFAULT_STATIC_DIR,
   saved,
   restore,
+  lanAddresses,
 }: AppOptions): Express {
   const app = express();
 
@@ -48,6 +52,9 @@ export function createApp({
     '/api/torrents',
     torrentsRouter({ client, downloadDir, saved, restore }),
   );
+
+  // Step 3.11: /tv.m3u for VLC on a TV, and /api/tv with its address.
+  app.use(tvRouter({ client, lanAddresses }));
 
   app.use((_req, res) => {
     res.status(404).type('text/plain').send('Not Found');

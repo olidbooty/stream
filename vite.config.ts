@@ -14,6 +14,7 @@ export default defineConfig({
     // `npm run dev`. Server-sent events pass through unbuffered.
     proxy: {
       '/api': `http://localhost:${process.env.PORT ?? 1234}`,
+      '/tv.m3u': `http://localhost:${process.env.PORT ?? 1234}`,
     },
   },
 });

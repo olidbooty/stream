@@ -6,6 +6,7 @@ import { createPlayer } from './player.js';
 import { parsePlayRoute } from './player-route.js';
 import { torrentForm } from './torrent-form.js';
 import { torrentList } from './torrent-list.js';
+import { tvPlaylist } from './tv-playlist.js';
 import { confirmDialog } from './ui/confirm-dialog.js';
 import { statusBanner } from './ui/status-banner.js';
 
@@ -34,8 +35,9 @@ const list = torrentList({
 
 const player = createPlayer({ api });
 const form = torrentForm({ api, onAdded: () => void refresh() });
+const tv = tvPlaylist({ api, clipboard: navigator.clipboard });
 
-app.append(form, banner.element, list.element, player.element);
+app.append(form, banner.element, list.element, tv.element, player.element);
 
 // Two views: the list, or the player at #play/<infoHash>/<index>. The live
 // list keeps running under the player, which shows its stats.
@@ -43,6 +45,7 @@ function route(): void {
   const play = parsePlayRoute(location.hash);
   form.hidden = play !== null;
   list.element.hidden = play !== null;
+  tv.setShown(play === null);
   player.element.hidden = play === null;
   if (play) void player.open(play);
   else player.close();
@@ -66,4 +69,5 @@ startLiveUpdates({
 
 // A tab opened in the background has no stream until it is shown.
 void refresh();
+void tv.load();
 app.dataset.ready = 'true';

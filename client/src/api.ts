@@ -2,6 +2,7 @@ import type {
   TorrentDetail,
   TorrentSummary,
 } from '../../server/torrents-api.js';
+import type { TvInfo } from '../../server/tv-playlist.js';
 
 // A non-2xx answer. `message` is the server's own {"error": "..."} text, which
 // is written for people, so the UI shows it as is.
@@ -27,6 +28,8 @@ export interface Api {
   // Stops and restarts a torrent's transfers, keeping its data.
   pauseTorrent(infoHash: string): Promise<void>;
   resumeTorrent(infoHash: string): Promise<void>;
+  // The TV playlist's address on each LAN address (step 3.11).
+  getTv(): Promise<TvInfo>;
 }
 
 // URLs the <video> and <track> elements load themselves.
@@ -61,9 +64,14 @@ async function errorFrom(res: Response): Promise<ApiError> {
 export function createApi(
   fetchFn: Fetch = (input, init) => fetch(input, init),
   base = '/api/torrents',
+  tvUrl = '/api/tv',
 ): Api {
   async function request(path: string, init?: RequestInit): Promise<Response> {
-    const res = await fetchFn(`${base}${path}`, init);
+    return send(`${base}${path}`, init);
+  }
+
+  async function send(url: string, init?: RequestInit): Promise<Response> {
+    const res = await fetchFn(url, init);
     if (!res.ok) throw await errorFrom(res);
     return res;
   }
@@ -108,6 +116,9 @@ export function createApi(
       await request(`/${encodeURIComponent(infoHash)}/resume`, {
         method: 'POST',
       });
+    },
+    async getTv() {
+      return (await send(tvUrl)).json();
     },
   };
 }

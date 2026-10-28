@@ -108,6 +108,20 @@ and the link opens the same video on another device. **Remove** asks first,
 because it deletes the downloaded files, and a failed torrent has **Retry**,
 which adds it again.
 
+### Watching on a TV with VLC
+
+Below the torrent list, **Watch on TV** shows an address like
+`http://192.168.1.20:1234/tv.m3u`. In VLC on the TV (a Fire Stick, Android
+TV, or VLC on any computer), choose **Stream** (**Network Stream** in some
+versions), enter that address and save it as a favourite. It is a playlist of
+every video in the list, by name, so after that you only pick from it. VLC
+fetches it again each time, so new torrents show up, and it plays formats
+browsers often can't (MKV, HEVC, AC-3). Seeking works, and opening a video
+downloads it and resumes its torrent, like Play in the page. Subtitles aren't
+included: VLC can't load them from a playlist. The address uses the
+computer's LAN address even when the page is open on `localhost`; if it
+lists several, try the next one when the TV can't connect.
+
 If the page loses its live connection, a red message above the list says so
 and the list is dimmed until updates resume. The page reconnects by itself.
 
@@ -123,12 +137,15 @@ The page uses this API, and scripts can too:
 | `POST /api/torrents` with JSON `{"magnet": "magnet:?xt=urn:btih:..."}` | Add a magnet link. `201` with the torrent, `400` if it isn't a BitTorrent magnet, `409` if it's already added |
 | `POST /api/torrents` with a `.torrent` file as the body, `Content-Type: application/x-bittorrent` | Add a torrent file, up to 10 MiB (`413` above that) |
 | `GET /api/torrents/:infoHash/files/:index/stream` | The file's bytes, for `<video src>`. Honours `Range` (`206` with `Content-Range`, `416` past the end), so playback and seeking start before the download finishes. `409` while the metadata is pending or for a failed torrent, `404` for an unknown file. Video, audio and `.vtt` files are served inline; anything else as a download (`application/octet-stream`) |
+| `GET /api/torrents/:infoHash/files/:index/stream?play` | The same, and for a video also what Play does: selects it so the rest downloads in the background, and resumes a paused torrent. Used by the TV playlist |
 | `POST /api/torrents/:infoHash/files/:index/select` | Start downloading another video and its subtitles, keeping what was already selected. `204`, `400` if the file isn't a video, `409` while the metadata is pending or for a failed torrent, `404` for an unknown file |
 | `GET /api/torrents/:infoHash/files/:index/subtitles.vtt` | A `.srt` or `.vtt` file as WebVTT for a `<track>`: `.srt` is converted, both are decoded as UTF-8 or else Windows-1252. `400` for any other file, `413` above 2 MiB, and the same `404`/`409` as the stream route |
 | `POST /api/torrents/:infoHash/pause` | Stop downloading and uploading, keeping the data: disconnects its peers and accepts no new ones. `204` (also if already paused), `409` for a failed torrent, `404` if it isn't there |
 | `POST /api/torrents/:infoHash/resume` | Start a paused torrent again: reconnects the peers it had and looks for more. Same answers as pause |
 | `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files, or clear a failed one. `204`, or `404` if it isn't there |
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
+| `GET /tv.m3u` | An M3U playlist for VLC: every video of every torrent with a file list, samples left out, each with an absolute `...stream?play` URL. Named after the torrent, or after the file when a torrent has several videos. URLs use the host the playlist was fetched on, or the LAN address when that is `localhost`. `Cache-Control: no-store` |
+| `GET /api/tv` | `{"playlistUrls": [...]}`: the playlist's address as another device would use it, one per LAN address (or the page's own host when it isn't `localhost`); empty with no network |
 
 Errors are JSON: `{"error": "..."}`.
 
@@ -218,11 +235,14 @@ server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation
 server/torrent-sources.ts drops trackers, web seeds and xs= URLs on local addresses
 server/media.ts           classifies a torrent's files and picks the one to play
+server/tv-playlist.ts     /tv.m3u playlist for VLC on a TV, and /api/tv
+server/network.ts         the machine's LAN addresses
 client/src/main.ts        page entry point: wires the modules below together
 client/src/api.ts         typed client for /api/torrents
 client/src/live-updates.ts  the page's one event stream (Decision #21)
 client/src/torrent-form.ts  add a magnet link or .torrent file
 client/src/torrent-list.ts  the live torrent list and its file lists
+client/src/tv-playlist.ts   Watch on TV: the playlist address for VLC
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)

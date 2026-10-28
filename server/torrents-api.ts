@@ -455,9 +455,27 @@ export function torrentsRouter({
   // The file's bytes, for a <video src>. Answers Range requests with 206, so
   // the browser can start and seek before the download is done. Express also
   // routes HEAD here.
+  //
+  // With ?play, as in the TV playlist (Decision #32), it also does what the
+  // page's Play does for a video: selects it so the rest downloads in the
+  // background (Decision #18) and resumes a paused torrent. Both are
+  // idempotent, so every Range request of a seek can repeat them.
   router.get('/:infoHash/files/:index/stream', (req, res) => {
     const found = fileFromParams(req, res);
-    if (found) streamFile(req, res, found.torrent.files[found.index]);
+    if (!found) return;
+    const { torrent, index } = found;
+    if (
+      req.query.play !== undefined &&
+      req.method === 'GET' &&
+      isVideoFile(torrent.files[index].name)
+    ) {
+      selection.selectVideo(torrent, index);
+      if (torrent.paused) {
+        resumeTorrent(torrent);
+        save(torrent);
+      }
+    }
+    streamFile(req, res, torrent.files[index]);
   });
 
   // Starts downloading another video and its subtitles in the background

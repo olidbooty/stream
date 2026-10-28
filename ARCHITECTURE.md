@@ -576,6 +576,40 @@ testing), and added what the player shows about it.
   trackers find peers again; a torrent with a single known peer stays at 0
   peers until it is removed and added again.
 
+### Watching on a TV
+
+Step 3.11, for a Fire Stick or any TV with VLC, which has no Chromecast or
+AirPlay for a Cast button (Feature Idea F04) to find. VLC can already open a
+stream URL, but typing one with a remote isn't practical, so `GET /tv.m3u`
+(`server/tv-playlist.ts`) is one short address to save in VLC once
+(Decision #32):
+
+- **Playlist.** An extended M3U with an `#EXTINF` title per video: every
+  video of every torrent whose file list is known, samples left out, in the
+  order the page lists them. A torrent with one video is named after the
+  torrent; with several (a season), each is named after its file. VLC
+  fetches it each time it is opened (`Cache-Control: no-store`), so new
+  torrents appear without saving it again. Videos browsers can't play are
+  listed too, since VLC plays most of them.
+- **Addresses.** Every URL is absolute. The host comes from the request's
+  `Host` header, which is the address the TV used to fetch the playlist, so
+  it works for any LAN address or a `.local` name. When that is `localhost`
+  or a loopback address, as when the page is opened on the server itself,
+  the LAN addresses from `server/network.ts` are used with the port the
+  request reached, so in development the URLs point at Express rather than
+  Vite. `GET /api/tv` gives the same addresses for the page's **Watch on TV**
+  section.
+- **Playing.** The URLs are the 3.2 stream route with `?play`, which also
+  does what Play in the page does for a video: selects it so the rest
+  downloads in the background (Decision #18) and resumes a paused torrent.
+  Both are idempotent, so each Range request of a seek repeats them
+  harmlessly. A `HEAD` request doesn't.
+- **No subtitles.** Checked with VLC 3.0.20: a playlist's
+  `#EXTVLCOPT:sub-file=` is read as a local path, so an `http://` subtitles
+  URL fails to open, and `#EXTVLCOPT:input-slave=` is refused as an unsafe
+  option. VLC for Android uses the same core. Subtitles on the TV would need
+  them muxed into the stream with ffmpeg (4.4).
+
 ### Seeding
 
 While a torrent is in the client, it uploads pieces to other peers. That is
@@ -659,3 +693,4 @@ design stays next to the code.
 | 28 | DHT found no nodes on a host with IPv6 | Decided | Found when a trackerless magnet got no peers on the owner's Mac. `createTorrentClient()` makes DNS lookups prefer IPv4 for the whole process and bootstraps the DHT from a wider router list including `dht.libtorrent.org:25401`. Remove the DNS setting once `k-rpc-socket` looks up IPv4 itself. See [Creating the client](#creating-the-client) |
 | 29 | Design tokens are not the only source of colours and sizes | Decided | Found in the 23 Oct 26 frontend review: `components.css` hard-coded ten colours, lengths and opacities. They are tokens now, and a test fails on any colour, length or opacity literal in `components.css`. Step 2.7. See [Design system](#design-system) |
 | 30 | Dark mode can only follow the OS setting | Decided | `data-theme="light"` or `"dark"` on `<html>` forces a theme; without it `prefers-color-scheme` decides. Plain duplicated dark values rather than CSS `light-dark()`, which older TV browsers lack. Step 2.7 |
+| 32 | How VLC on a TV finds the videos | Decided | `GET /tv.m3u`, an M3U playlist of every video (samples left out) with absolute stream URLs on the host the TV fetched it from, or the LAN address when that is `localhost`. URLs carry `?play`, which selects the video and resumes a paused torrent like Play in the page. No subtitles: VLC reads a playlist's `sub-file` as a local path and refuses `input-slave`. Step 3.11. See [Watching on a TV](#watching-on-a-tv) |

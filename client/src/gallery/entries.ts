@@ -14,6 +14,7 @@ import {
 import { sampleDetail, sampleSummary } from '../sample-data.js';
 import { torrentForm } from '../torrent-form.js';
 import { torrentList } from '../torrent-list.js';
+import { tvPlaylist } from '../tv-playlist.js';
 import { button } from '../ui/button.js';
 import { confirmDialog } from '../ui/confirm-dialog.js';
 import { el } from '../ui/dom.js';
@@ -197,6 +198,15 @@ function list(torrents: TorrentSummary[], stale = false): HTMLElement {
   l.update(torrents);
   l.setStale(stale);
   return l.element;
+}
+
+function tv(playlistUrls: string[]): HTMLElement {
+  const t = tvPlaylist({
+    api: { getTv: async () => ({ playlistUrls }) },
+    clipboard: { writeText: async () => {} },
+  });
+  t.update(playlistUrls);
+  return t.element;
 }
 
 function textInput(placeholder = ''): HTMLInputElement {
@@ -446,5 +456,21 @@ export const entries: GalleryEntry[] = [
     component: 'Torrent list',
     state: 'stale (live updates down)',
     render: () => list([sampleSummary(), seeding], true),
+  },
+  {
+    component: 'Watch on TV',
+    state: 'one address',
+    render: () => tv(['http://192.168.1.20:1234/tv.m3u']),
+  },
+  {
+    component: 'Watch on TV',
+    state: 'two addresses',
+    render: () =>
+      tv(['http://192.168.1.20:1234/tv.m3u', 'http://10.0.0.5:1234/tv.m3u']),
+  },
+  {
+    component: 'Watch on TV',
+    state: 'no network',
+    render: () => tv([]),
   },
 ];

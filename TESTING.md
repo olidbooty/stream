@@ -259,6 +259,13 @@ hand:
    testsrc2=size=640x360:rate=25 -f lavfi -i sine -t 240 -c:v libvpx -b:v
    1200k -c:a libopus Clip.webm`.
 
+8. For the TV playlist (step 3.11), open the `/tv.m3u` address shown under
+   **Watch on TV** in VLC on the TV (Stream, or Network Stream). Each video
+   should be listed by name, play, and seek; playing one of a paused torrent
+   should resume it. Without a TV, `cvlc --play-and-exit -vv <address>`
+   (VLC refuses to run as root) logs each entry's name and its `Range`
+   requests.
+
 Real peer tests use your network and upload to the swarm (see
 [ARCHITECTURE.md](ARCHITECTURE.md#seeding)). Remove test torrents afterwards
 and clear the download directory.

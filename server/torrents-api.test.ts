@@ -1050,6 +1050,45 @@ describe('/api/torrents', () => {
       expect(await detail()).toMatchObject({ progress: 1, state: 'seeding' });
     });
 
+    it('selects a video streamed with ?play, as the TV playlist does', async () => {
+      const torrent = client.torrents[0];
+      torrent.simulateMetadata({ name: 'Show', files: SEASON });
+
+      const plain = await request(app)
+        .get(`/api/torrents/${HASH}/files/2/stream`)
+        .set('Range', 'bytes=0-9');
+      expect(plain.status).toBe(206);
+      expect(selectedFiles()).toEqual([true, true, false, false, false]);
+
+      const head = await request(app).head(
+        `/api/torrents/${HASH}/files/2/stream?play`,
+      );
+      expect(head.status).toBe(200);
+      expect(selectedFiles()).toEqual([true, true, false, false, false]);
+
+      const played = await request(app)
+        .get(`/api/torrents/${HASH}/files/2/stream?play`)
+        .set('Range', 'bytes=0-9');
+      expect(played.status).toBe(206);
+      expect(selectedFiles()).toEqual([true, true, true, true, false]);
+    });
+
+    it('resumes a paused torrent streamed with ?play', async () => {
+      const torrent = client.torrents[0];
+      torrent.simulateMetadata({ name: 'Show', files: SEASON });
+      await request(app).post(`/api/torrents/${HASH}/pause`);
+
+      await request(app)
+        .get(`/api/torrents/${HASH}/files/4/stream?play`)
+        .set('Range', 'bytes=0-9');
+      expect(torrent.paused).toBe(true);
+
+      await request(app)
+        .get(`/api/torrents/${HASH}/files/0/stream?play`)
+        .set('Range', 'bytes=0-9');
+      expect(torrent.paused).toBe(false);
+    });
+
     it('downloads everything in a torrent with no video', async () => {
       client.torrents[0].simulateMetadata({
         name: 'Album',

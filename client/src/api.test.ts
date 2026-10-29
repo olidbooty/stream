@@ -31,6 +31,15 @@ describe('createApi', () => {
     expect(detail.mainFile).toBe(1);
   });
 
+  it('gets the TV playlist addresses', async () => {
+    const fetch = stub(
+      respond(200, { playlistUrls: ['http://192.168.1.20:1234/tv.m3u'] }),
+    );
+    const tv = await createApi(fetch).getTv();
+    expect(fetch).toHaveBeenCalledWith('/api/tv', undefined);
+    expect(tv.playlistUrls).toEqual(['http://192.168.1.20:1234/tv.m3u']);
+  });
+
   it('posts a magnet link as JSON', async () => {
     const fetch = stub(respond(201, sampleSummary()));
     await createApi(fetch).addMagnet('magnet:?xt=urn:btih:abc');

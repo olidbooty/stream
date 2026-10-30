@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parsePlayRoute, playHref } from './player-route.js';
+import {
+  isSettingsRoute,
+  parsePlayRoute,
+  playHref,
+  SETTINGS_HREF,
+} from './player-route.js';
 
 const HASH = '08ada5a7a6183aae1e09d831df6748d566095a10';
 
@@ -31,5 +36,17 @@ describe('parsePlayRoute', () => {
       infoHash: HASH,
       index: 12,
     });
+  });
+});
+
+describe('isSettingsRoute', () => {
+  it('matches only #settings', () => {
+    expect(isSettingsRoute(SETTINGS_HREF)).toBe(true);
+    expect(isSettingsRoute('#settings')).toBe(true);
+    expect(isSettingsRoute('')).toBe(false);
+    expect(isSettingsRoute('#settings/x')).toBe(false);
+    expect(
+      isSettingsRoute('#play/0123456789abcdef0123456789abcdef01234567/0'),
+    ).toBe(false);
   });
 });

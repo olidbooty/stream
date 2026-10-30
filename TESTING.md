@@ -258,10 +258,11 @@ hand:
 6. Restart the server with Ctrl+C and `npm start` while a torrent is part
    downloaded. It should come back with the same progress, selected files
    and paused state, and its files should still be in `DOWNLOAD_DIR`.
-   To check the disk limit (Decision #36), set a limit under Settings a
+   To check the disk limit (Decision #36), set a limit on the Settings page a
    little above what the torrents use now, and play or add something. Once
    usage reaches it, the downloading torrents show "Paused: disk limit
-   reached" and adding another is refused; raising the limit resumes them.
+   reached", the list shows the amber disk-limit banner, and adding another
+   is refused; raising the limit resumes them.
    A restart keeps the limit. Put a folder of your own in `DOWNLOAD_DIR`
    and reload: it shows under Leftover files, and Delete removes it after
    the confirmation.
@@ -279,7 +280,7 @@ hand:
    1200k -c:a libopus Clip.webm`.
 
 8. For the TV playlist (step 3.11), open the `/tv.m3u` address shown under
-   **Watch on TV** in VLC on the TV (Stream, or Network Stream). Each video
+   **Watch on TV** (Settings page) in VLC on the TV (Stream, or Network Stream). Each video
    should be listed by name, play, and seek; playing one of a paused torrent
    should resume it. Without a TV, `cvlc --play-and-exit -vv <address>`
    (VLC refuses to run as root) logs each entry's name and its `Range`

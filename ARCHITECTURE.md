@@ -255,8 +255,9 @@ needs as arguments, so it can be tested in jsdom (see
 | `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24); subtitle track names and the player's stats line |
 | `buffer-health.ts` | Step 3.5, as pure functions: seconds buffered ahead of the playhead from `video.buffered`, the video's average bitrate (file size over duration), and whether the download is too slow to keep up. See [Buffer health](#buffer-health) |
 | `media-error.ts` | The player's messages for each `MediaError` code and for a sound-only video (step 4.2a), as pure functions |
-| `tv-playlist.ts` | The **Watch on TV** section under the list (step 3.11): asks `GET /api/tv` once for the playlist's address, shows it with a Copy button where the page has a clipboard, and hides itself while the player is open or when the server can't answer. See [Watching on a TV](#watching-on-a-tv) |
-| `player-route.ts` | The player's address, `#play/<infoHash>/<index>`. `main.ts` shows the list or the player on `hashchange`, so Back closes the player and a link opens it on another device |
+| `tv-playlist.ts` | The **Watch on TV** section of the settings page (step 3.11): asks `GET /api/tv` for the playlist's address, shows it with a Copy button where the page has a clipboard, and hides itself when the server can't answer. See [Watching on a TV](#watching-on-a-tv) |
+| `settings-panel.ts` | The **Disk space** section of the settings page (Decision #36): usage, the disk limit form and the leftover files with their Delete buttons (#38). Also `diskFullMessage()`, the warning banner the list shows while a torrent is `diskFull`, since the usage itself is only on the settings page. See [Disk limit and settings](#disk-limit-and-settings) |
+| `player-route.ts` | The page's addresses: the player at `#play/<infoHash>/<index>` and the settings page at `#settings`, opened from the Settings link in the header. `main.ts` shows the list, the player or the settings page on `hashchange`, so Back closes the player or the settings and a link opens either on another device. The TV address and the disk space are on their own page because each is set once and rarely changed, which keeps the list page to adding and watching torrents |
 | `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and, from 4.2a, a message per `MediaError` code naming the file and its container (`media-error.ts`): not supported, can't decode, or cut off with a Retry that reloads the stream and seeks back. A video whose metadata loads with `videoWidth` 0 gets a sound-only warning. Errors and the warning use the status banner's look and stay up through later `playing` events until the next load. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) and, from 3.5, adds the seconds buffered ahead; a separate warning line says when the download is slower than the video ([Buffer health](#buffer-health)) |
 
 Response types are imported from `server/torrents-api.ts` with `import type`,
@@ -667,8 +668,8 @@ stream URL, but typing one with a remote isn't practical, so `GET /tv.m3u`
   or a loopback address, as when the page is opened on the server itself,
   the LAN addresses from `server/network.ts` are used with the port the
   request reached, so in development the URLs point at Express rather than
-  Vite. `GET /api/tv` gives the same addresses for the page's **Watch on TV**
-  section.
+  Vite. `GET /api/tv` gives the same addresses for the **Watch on TV**
+  section of the settings page.
 - **Playing.** The URLs are the 3.2 stream route with `?play`, which also
   does what Play in the page does for a video: selects it so the rest
   downloads in the background (Decision #18) and resumes a paused torrent.

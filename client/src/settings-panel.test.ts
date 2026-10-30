@@ -3,6 +3,7 @@ import type { LeftoversInfo } from '../../server/leftovers.js';
 import type { SettingsInfo } from '../../server/settings-api.js';
 import { ApiError } from './api.js';
 import {
+  diskFullMessage,
   limitText,
   parseLimit,
   settingsPanel,
@@ -81,6 +82,18 @@ describe('limitText and usageText', () => {
     expect(
       usageText({ ...UNDER, diskUsed: 50 * GB, diskLimitReached: true }),
     ).toContain('downloads are paused and new torrents are refused');
+  });
+});
+
+describe('diskFullMessage', () => {
+  it('speaks up only while the limit holds a torrent back', () => {
+    expect(diskFullMessage([])).toBeNull();
+    expect(
+      diskFullMessage([{ state: 'paused' }, { state: 'seeding' }]),
+    ).toBeNull();
+    expect(
+      diskFullMessage([{ state: 'seeding' }, { state: 'diskFull' }]),
+    ).toContain('raise the limit in Settings');
   });
 });
 

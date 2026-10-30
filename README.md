@@ -111,7 +111,7 @@ which adds it again.
 
 ### Watching on a TV with VLC
 
-Below the torrent list, **Watch on TV** shows an address like
+On the Settings page (the link in the header), **Watch on TV** shows an address like
 `http://192.168.1.20:1234/tv.m3u`. In VLC on the TV (a Fire Stick, Android
 TV, or VLC on any computer), choose **Stream** (**Network Stream** in some
 versions), enter that address and save it as a favourite. It is a playlist of
@@ -216,7 +216,8 @@ is kept, re-checked at startup ("Checking files" for a while on a large
 torrent), and the download carries on from there. Failed torrents are not
 restored. Delete `DOWNLOAD_DIR/.torrents` to start with an empty list.
 
-The disk limit (Decision #36) is set under Settings at the bottom of the page
+The disk limit (Decision #36) is set on the Settings page (the Settings link
+in the header, or `#settings`), next to the Watch on TV address,
 and saved in `DOWNLOAD_DIR/.settings.json`, so every device sees the same
 limit and it survives a restart. Once the torrents' data reaches it, every
 torrent still downloading pauses ("Paused: disk limit reached"), and adding
@@ -268,7 +269,7 @@ client/src/api.ts         typed client for /api/torrents
 client/src/live-updates.ts  the page's one event stream (Decision #21)
 client/src/torrent-form.ts  add a magnet link or .torrent file
 client/src/torrent-list.ts  the live torrent list and its file lists
-client/src/tv-playlist.ts   Watch on TV: the playlist address for VLC
+client/src/tv-playlist.ts   Watch on TV on the settings page: the playlist address for VLC
 client/src/settings-panel.ts  Settings: the disk limit, usage and leftover files
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles

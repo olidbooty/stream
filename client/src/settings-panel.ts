@@ -1,5 +1,6 @@
 import type { Leftover, LeftoversInfo } from '../../server/leftovers.js';
 import type { SettingsInfo } from '../../server/settings-api.js';
+import type { TorrentSummary } from '../../server/torrents-api.js';
 import type { Api } from './api.js';
 import { formatBytes } from './format.js';
 import { button } from './ui/button.js';
@@ -42,6 +43,16 @@ export interface SettingsPanel {
   setShown(shown: boolean): void;
 }
 
+// What the list page shows while the limit holds downloads back, since the
+// usage itself is on the settings page; null when nothing is held back.
+export function diskFullMessage(
+  torrents: readonly Pick<TorrentSummary, 'state'>[],
+): string | null {
+  return torrents.some((torrent) => torrent.state === 'diskFull')
+    ? 'Downloads are paused because the disk limit is reached. Remove a torrent, or raise the limit in Settings.'
+    : null;
+}
+
 // The limit typed in gigabytes: empty for none. Returns undefined when it
 // isn't a number above 0.
 export function parseLimit(text: string): number | null | undefined {
@@ -70,8 +81,9 @@ export function usageText({
     : usage;
 }
 
-// Decision #36: the disk limit, saved on the server for every device. Below
-// the TV address, since it is set once and then rarely changed.
+// Decision #36: the disk limit, saved on the server for every device. On the
+// settings page with the TV address, since both are set once and then rarely
+// changed.
 export function settingsPanel({
   api,
   confirm,
@@ -127,7 +139,7 @@ export function settingsPanel({
       className: 'settings',
       attrs: { 'aria-labelledby': 'settings-heading' },
     },
-    el('h2', { text: 'Settings', attrs: { id: 'settings-heading' } }),
+    el('h2', { text: 'Disk space', attrs: { id: 'settings-heading' } }),
     usage,
     form,
     leftovers,

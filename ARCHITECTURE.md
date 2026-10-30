@@ -139,25 +139,25 @@ missing and no error. **Error 4**: `MEDIA_ERR_SRC_NOT_SUPPORTED`.
 
 | Clip | Chromium 153 (Linux) | Chrome (Mac) | Safari (Mac) | Firefox (Mac) | TV |
 | ---- | -------------------- | ------------ | ------------ | ------------- | -- |
-| MP4 H.264 / AAC | Plays | | | | |
-| MP4 H.264 High 10 (10-bit) / AAC | Plays | | | | |
-| MP4 H.264 / MP3 | Plays | | | | |
-| MP4 H.264 / AC-3 5.1 | No sound | | | | |
-| MP4 H.264 / E-AC-3 5.1 | No sound | | | | |
-| MP4 HEVC / AAC | No picture | | | | |
-| MP4 AV1 / Opus | Plays | | | | |
-| MKV H.264 / AAC | Plays | | | | |
-| MKV H.264 / AC-3 5.1 | No sound | | | | |
-| MKV H.264 / DTS 5.1 | No sound | | | | |
-| MKV H.264 / FLAC | Plays | | | | |
-| MKV HEVC / AAC | No picture | | | | |
-| WebM VP9 / Opus | Plays | | | | |
-| WebM VP8 / Vorbis | Plays | | | | |
-| WebM AV1 / Opus | Plays | | | | |
-| MOV H.264 / AAC | Plays | | | | |
-| AVI Xvid / MP3 | Error 4 | | | | |
-| MPEG-TS H.264 / AAC | Error 4 | | | | |
-| Ogg Theora / Vorbis | No picture | | | | |
+| MP4 H.264 / AAC | Plays | | | Plays | |
+| MP4 H.264 High 10 (10-bit) / AAC | Plays | | | ? | |
+| MP4 H.264 / MP3 | Plays | | | Plays | |
+| MP4 H.264 / AC-3 5.1 | No sound | | | No sound | |
+| MP4 H.264 / E-AC-3 5.1 | No sound | | | No sound | |
+| MP4 HEVC / AAC | No picture | | | Plays | |
+| MP4 AV1 / Opus | Plays | | | Plays | |
+| MKV H.264 / AAC | Plays | | | Plays | |
+| MKV H.264 / AC-3 5.1 | No sound | | | No sound | |
+| MKV H.264 / DTS 5.1 | No sound | | | No sound | |
+| MKV H.264 / FLAC | Plays | | | No sound | |
+| MKV HEVC / AAC | No picture | | | Plays | |
+| WebM VP9 / Opus | Plays | | | Plays | |
+| WebM VP8 / Vorbis | Plays | | | Plays | |
+| WebM AV1 / Opus | Plays | | | Plays | |
+| MOV H.264 / AAC | Plays | | | Plays | |
+| AVI Xvid / MP3 | Error 4 | | | Error | |
+| MPEG-TS H.264 / AAC | Error 4 | | | Error | |
+| Ogg Theora / Vorbis | No picture | | | Not run | |
 
 The Chromium column is Playwright's build in the development sandbox, checked
 on 26 Oct 26; it has H.264 and AAC but no HEVC. The other columns are for the

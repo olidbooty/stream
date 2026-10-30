@@ -13,7 +13,7 @@ import {
 } from './tv-playlist.js';
 
 // Step 3.12: a UPnP MediaServer, so VLC's Browse > Local network lists each
-// torrent as a folder of its videos (Decision #33). server/ssdp.ts announces
+// torrent as a folder of its videos (Decision #37). server/ssdp.ts announces
 // it; this is the HTTP side: the device description, the two services' SCPDs
 // and their SOAP control URLs. Only what VLC and other players use to browse
 // is implemented: ContentDirectory's Browse and the required small actions,

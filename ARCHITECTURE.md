@@ -613,7 +613,7 @@ stream URL, but typing one with a remote isn't practical, so `GET /tv.m3u`
 
 ### Browsing in VLC (DLNA)
 
-Step 3.12 (Decision #33). The 3.11 playlist is one flat list and needs an
+Step 3.12 (Decision #37). The 3.11 playlist is one flat list and needs an
 address typed in once. VLC's **Browse > Local network** finds UPnP media
 servers by itself, so the server is one, and each torrent shows as a folder.
 Written by hand on Express and `node:dgram` (`server/dlna.ts`,
@@ -685,7 +685,7 @@ all interfaces (Decision #8). WebTorrent would also ask the router to forward
 the peer port with UPnP/NAT-PMP; that is off unless `PORT_MAPPING=1`
 (Decision #7).
 
-The DLNA server (Decision #33) listens on UDP `1900` on all interfaces, as
+The DLNA server (Decision #37) listens on UDP `1900` on all interfaces, as
 SSDP requires, but only answers searches from addresses on one of the
 machine's LAN networks, and only announces itself on those, with a multicast
 TTL of 2. Its answers are a few hundred bytes, unicast to the asker. It
@@ -757,4 +757,4 @@ design stays next to the code.
 | 29 | Design tokens are not the only source of colours and sizes | Decided | Found in the 23 Oct 26 frontend review: `components.css` hard-coded ten colours, lengths and opacities. They are tokens now, and a test fails on any colour, length or opacity literal in `components.css`. Step 2.7. See [Design system](#design-system) |
 | 30 | Dark mode can only follow the OS setting | Decided | `data-theme="light"` or `"dark"` on `<html>` forces a theme; without it `prefers-color-scheme` decides. Plain duplicated dark values rather than CSS `light-dark()`, which older TV browsers lack. Step 2.7 |
 | 32 | How VLC on a TV finds the videos | Decided | `GET /tv.m3u`, an M3U playlist of every video (samples left out) with absolute stream URLs on the host the TV fetched it from, or the LAN address when that is `localhost`. URLs carry `?play`, which selects the video and resumes a paused torrent like Play in the page. No subtitles: VLC reads a playlist's `sub-file` as a local path and refuses `input-slave`. Step 3.11. See [Watching on a TV](#watching-on-a-tv) |
-| 33 | DLNA server for browsing in VLC | Decided | Hand-written UPnP MediaServer on Express and `node:dgram`, on by default (`DLNA=0` turns it off, and it is off when `HOST` keeps the HTTP port local). One folder per torrent of its videos, same order as the playlist, with `?play` stream URLs and matching subtitles as `text/vtt` resources, which VLC lists as subtitle tracks. SSDP on UDP 1900 only answers and announces on LAN networks. The playlist stays as the fallback. Step 3.12. See [Browsing in VLC (DLNA)](#browsing-in-vlc-dlna) |
+| 37 | DLNA server for browsing in VLC | Decided | Hand-written UPnP MediaServer on Express and `node:dgram`, on by default (`DLNA=0` turns it off, and it is off when `HOST` keeps the HTTP port local). One folder per torrent of its videos, same order as the playlist, with `?play` stream URLs and matching subtitles as `text/vtt` resources, which VLC lists as subtitle tracks. SSDP on UDP 1900 only answers and announces on LAN networks. The playlist stays as the fallback. Step 3.12. See [Browsing in VLC (DLNA)](#browsing-in-vlc-dlna) |

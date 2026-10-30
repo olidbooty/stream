@@ -13,7 +13,7 @@ import { interfaceFor, type LanInterface } from './network.js';
 // M-SEARCH to 239.255.255.250:1900 and the server answers with the address of
 // its description; it also multicasts NOTIFY ssdp:alive when it starts and
 // every few minutes, and ssdp:byebye when it stops. It only answers devices
-// on the same network as one of the machine's LAN interfaces (Decision #33).
+// on the same network as one of the machine's LAN interfaces (Decision #37).
 
 export const SSDP_ADDRESS = '239.255.255.250';
 export const SSDP_PORT = 1900;

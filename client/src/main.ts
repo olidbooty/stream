@@ -4,6 +4,7 @@ import { createApi } from './api.js';
 import { STATUS_MESSAGES, startLiveUpdates } from './live-updates.js';
 import { createPlayer } from './player.js';
 import { parsePlayRoute } from './player-route.js';
+import { settingsPanel } from './settings-panel.js';
 import { torrentForm } from './torrent-form.js';
 import { torrentList } from './torrent-list.js';
 import { tvPlaylist } from './tv-playlist.js';
@@ -36,8 +37,16 @@ const list = torrentList({
 const player = createPlayer({ api });
 const form = torrentForm({ api, onAdded: () => void refresh() });
 const tv = tvPlaylist({ api, clipboard: navigator.clipboard });
+const settings = settingsPanel({ api });
 
-app.append(form, banner.element, list.element, tv.element, player.element);
+app.append(
+  form,
+  banner.element,
+  list.element,
+  tv.element,
+  settings.element,
+  player.element,
+);
 
 // Two views: the list, or the player at #play/<infoHash>/<index>. The live
 // list keeps running under the player, which shows its stats.
@@ -46,6 +55,7 @@ function route(): void {
   form.hidden = play !== null;
   list.element.hidden = play !== null;
   tv.setShown(play === null);
+  settings.setShown(play === null);
   player.element.hidden = play === null;
   if (play) void player.open(play);
   else player.close();
@@ -59,6 +69,8 @@ startLiveUpdates({
   onTorrents: (torrents) => {
     list.update(torrents);
     player.update(torrents);
+    // Usage changes as torrents download.
+    settings.refresh();
   },
   onStatus: (status) => {
     if (status === 'live') banner.hide();
@@ -70,4 +82,5 @@ startLiveUpdates({
 // A tab opened in the background has no stream until it is shown.
 void refresh();
 void tv.load();
+void settings.load();
 app.dataset.ready = 'true';

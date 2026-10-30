@@ -1,3 +1,5 @@
+import type { Settings } from '../../server/settings.js';
+import type { SettingsInfo } from '../../server/settings-api.js';
 import type {
   TorrentDetail,
   TorrentSummary,
@@ -30,6 +32,10 @@ export interface Api {
   resumeTorrent(infoHash: string): Promise<void>;
   // The TV playlist's address on each LAN address (step 3.11).
   getTv(): Promise<TvInfo>;
+  // The settings and the disk usage they limit (Decision #36). Saving takes
+  // the keys to change and answers like getSettings().
+  getSettings(): Promise<SettingsInfo>;
+  saveSettings(settings: Partial<Settings>): Promise<SettingsInfo>;
 }
 
 // URLs the <video> and <track> elements load themselves.
@@ -65,6 +71,7 @@ export function createApi(
   fetchFn: Fetch = (input, init) => fetch(input, init),
   base = '/api/torrents',
   tvUrl = '/api/tv',
+  settingsUrl = '/api/settings',
 ): Api {
   async function request(path: string, init?: RequestInit): Promise<Response> {
     return send(`${base}${path}`, init);
@@ -119,6 +126,17 @@ export function createApi(
     },
     async getTv() {
       return (await send(tvUrl)).json();
+    },
+    async getSettings() {
+      return (await send(settingsUrl)).json();
+    },
+    async saveSettings(settings) {
+      const res = await send(settingsUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      return res.json();
     },
   };
 }

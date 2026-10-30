@@ -246,6 +246,11 @@ hand:
 6. Restart the server with Ctrl+C and `npm start` while a torrent is part
    downloaded. It should come back with the same progress, selected files
    and paused state, and its files should still be in `DOWNLOAD_DIR`.
+   To check the disk limit (Decision #36), set a limit under Settings a
+   little above what the torrents use now, and play or add something. Once
+   usage reaches it, the downloading torrents show "Paused: disk limit
+   reached" and adding another is refused; raising the limit resumes them.
+   A restart keeps the limit.
 
 7. To see how playback copes when peers slow down (step 3.5), seed a file
    you made from a second WebTorrent client on the same machine with the

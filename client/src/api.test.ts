@@ -40,6 +40,23 @@ describe('createApi', () => {
     expect(tv.playlistUrls).toEqual(['http://192.168.1.20:1234/tv.m3u']);
   });
 
+  it('gets and saves the settings', async () => {
+    const info = { diskLimit: 5e9, diskUsed: 1e9, diskLimitReached: false };
+    const fetch = vi
+      .fn<Fetch>()
+      .mockImplementation(async () => respond(200, info));
+    const api = createApi(fetch);
+    expect(await api.getSettings()).toEqual(info);
+    expect(fetch).toHaveBeenCalledWith('/api/settings', undefined);
+
+    expect(await api.saveSettings({ diskLimit: null })).toEqual(info);
+    expect(fetch).toHaveBeenLastCalledWith('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diskLimit: null }),
+    });
+  });
+
   it('posts a magnet link as JSON', async () => {
     const fetch = stub(respond(201, sampleSummary()));
     await createApi(fetch).addMagnet('magnet:?xt=urn:btih:abc');

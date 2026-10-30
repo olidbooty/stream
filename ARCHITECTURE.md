@@ -451,7 +451,8 @@ but moves it:
   `destroyStore: false`.
 - The torrent list survives a restart; see
   [Restoring torrents after a restart](#restoring-torrents-after-a-restart).
-- A limit on the directory's total size comes in 4.3.
+- The torrents' data is kept under the disk limit in the settings; see
+  [Disk limit and settings](#disk-limit-and-settings).
 
 ### Restoring torrents after a restart
 
@@ -494,7 +495,45 @@ first added, through `filterSources()` and `addTorrent()` like a new one:
 named `.torrents` could overwrite an entry. That is accepted: entries are
 validated like API input, so the worst it can do is add or drop a torrent,
 which anyone on the LAN can already do (Decision #12). Deleting files that no
-saved torrent owns, and the size limit, come in 4.3.
+saved torrent owns comes in 4.3.
+
+### Disk limit and settings
+
+Decision #36. Since 4.3a keeps downloads across restarts, `DOWNLOAD_DIR` only
+grows, so the user sets a limit on the page.
+
+- **Where settings live.** `SettingsStore` (`server/settings.ts`) keeps them
+  in one JSON file, `DOWNLOAD_DIR/.settings.json` (`{"diskLimit": <bytes> |
+  null}`), written like the saved torrents through `writeFileAtomically()`
+  (`server/atomic-file.ts`) and queued so quick changes land in order. It
+  sits with the downloads it limits, needs no dependency, and is the same on
+  every device, unlike browser storage; VLC on the TV has no page anyway.
+  `DISK_LIMIT_GB` only sets the value used until one is saved; a saved
+  `null` (no limit) wins over it too. An unreadable file is logged, ignored
+  and left on disk. Considered: an env var alone (can't change it from the
+  page), `localStorage` (per device, while the server enforces it), SQLite
+  via `node:sqlite` (too much for one value) and npm config libraries.
+- **API.** `GET /api/settings` answers the settings plus `diskUsed` and
+  `diskLimitReached`; `PUT` takes any of the keys, keeps the rest, applies
+  at once and saves. A bad value is `400`.
+- **Usage.** `DiskLimit` (`server/disk-limit.ts`) adds up
+  `torrent.downloaded` over the running torrents: WebTorrent counts verified
+  and partly downloaded pieces, which is what their files hold on disk.
+  Files no torrent owns aren't counted. The files are sparse, so a file
+  manager shows each at full size from the start while `du` shows the real
+  usage; checked with a local seeder, where a 24 MB file at a 10 MB limit
+  stopped at 10.0 MB on disk.
+- **At the limit.** Checked every second and after a `PUT` or `DELETE`.
+  Once usage reaches the limit, every torrent with selected files still to
+  download is paused with `pauseTorrent()` and shows state `diskFull`;
+  `POST /api/torrents` and `resume` answer `507`, and `?play` doesn't resume
+  a paused torrent (what is on disk still streams). A torrent whose
+  selection is done keeps seeding. When usage drops below the limit (a
+  torrent removed, the limit raised or removed), the torrents the limit
+  paused resume by themselves. One the user pauses or resumes is the
+  user's again: a pause by the limit is never saved to `.torrents`, so after
+  a restart the limit decides again. A torrent can overshoot by what it
+  downloads in one second.
 
 ### Streaming
 
@@ -629,7 +668,8 @@ all interfaces (Decision #8). WebTorrent would also ask the router to forward
 the peer port with UPnP/NAT-PMP; that is off unless `PORT_MAPPING=1`
 (Decision #7).
 
-`/api/torrents` has no authentication (Decision #12). A torrent also makes
+`/api/torrents` and `/api/settings` have no authentication (Decision #12),
+so anyone on the LAN can also change or remove the disk limit. A torrent also makes
 the server contact hosts its adder chose: trackers (`tr=`, `announce`), web
 seeds (`ws=`, `as=`, `url-list`) and a magnet's `xs=` URL, which WebTorrent
 fetches over HTTP to get metadata. Someone on the LAN could use that to make
@@ -666,7 +706,7 @@ design stays next to the code.
 | 1 | Browser-side WebTorrent vs. a Node-side client streaming over HTTP | Decided | Node-side, so TCP, uTP and DHT peers are reachable as well as WebRTC. See [Why not in the browser](#why-not-in-the-browser) |
 | 2 | Whether explicit sequential piece selection is needed | Decided | No. `webtorrent@3` defaults to the `sequential` strategy and `createReadStream` fetches the requested range first. 3.3 checks seeking and reopens this only if playback stalls |
 | 3 | Whether to list `.mkv` and similar with a warning | Decided | Yes. 3.1 lists `.mkv`, `.avi`, `.mov` and other video files marked "may not play" next to `.mp4`/`.webm`. 4.2 shows the real playback error; 4.4 can remux |
-| 4 | Chunk store / storage strategy | Decided | Default `fs-chunk-store` in `DOWNLOAD_DIR` (default `./downloads`). Removing a torrent deletes its files; 4.3 adds a size limit. See [Storage](#storage) |
+| 4 | Chunk store / storage strategy | Decided | Default `fs-chunk-store` in `DOWNLOAD_DIR` (default `./downloads`). Removing a torrent deletes its files; the disk limit is a setting (#36). See [Storage](#storage) |
 | 5 | Run the codec audit (4.1) early on test files | Decided | Yes. 4.1 now depends on 2.3 instead of 3.1, so test files are checked with `ffprobe` before playback work and 3.1's filter can use the results |
 | 6 | Test environment limits | Decided | Unit tests use the shared fake and never join a real swarm; real peers and playback are checked by hand ([TESTING.md](TESTING.md#manual-testing)) until 4.5 |
 | 7 | Keep WebTorrent's automatic UPnP/NAT-PMP port mapping? | Decided | Off by default: the client gets `natUpnp: false` and `natPmp: false`, and `PORT_MAPPING=1` turns both on. No silent router changes; users forward `TORRENT_PORT` by hand, documented in the README. Implemented in 2.6 |
@@ -674,7 +714,7 @@ design stays next to the code.
 | 9 | 2.1 not yet checked against a real swarm | Open | Checked in 2.6 on the owner's Mac: ordinary BitTorrent peers over TCP (once #25 was fixed) and the DHT alone. WebRTC peers, incoming peers with forwarded ports and a Raspberry Pi are deferred |
 | 10 | Native modules without prebuilt binaries | Decided | Support Linux x64, macOS, Windows and Raspberry Pi. 2.6 adds a startup check: without `utp-native` the client logs that it is TCP-only; if `node-datachannel` fails to load it runs without WebRTC instead of crashing. The README lists the build tools needed on ARM |
 | 11 | Torrents make the server contact hosts the adder chose | Decided | Strip a magnet's `xs=` URL before `client.add()`. Drop tracker and web seed URLs that aren't http(s)/udp/wss or whose host is localhost or a literal loopback, private, link-local or unspecified IP. Hostnames that resolve to LAN addresses still pass. Implemented in 2.6, before 2.5. See [Network exposure](#network-exposure) |
-| 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
+| 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents and change the settings; the disk limit (#36) caps disk use |
 | 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` (the magnet until metadata arrives), delete it on removal, re-add them all at startup, then delete files no saved torrent owns. Saving and restoring, with the selection and paused state, implemented in 4.3a (split from 4.3); shutdown no longer deletes downloads. Deleting unowned files stays in 4.3. See [Restoring torrents after a restart](#restoring-torrents-after-a-restart) |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
@@ -694,3 +734,4 @@ design stays next to the code.
 | 29 | Design tokens are not the only source of colours and sizes | Decided | Found in the 23 Oct 26 frontend review: `components.css` hard-coded ten colours, lengths and opacities. They are tokens now, and a test fails on any colour, length or opacity literal in `components.css`. Step 2.7. See [Design system](#design-system) |
 | 30 | Dark mode can only follow the OS setting | Decided | `data-theme="light"` or `"dark"` on `<html>` forces a theme; without it `prefers-color-scheme` decides. Plain duplicated dark values rather than CSS `light-dark()`, which older TV browsers lack. Step 2.7 |
 | 32 | How VLC on a TV finds the videos | Decided | `GET /tv.m3u`, an M3U playlist of every video (samples left out) with absolute stream URLs on the host the TV fetched it from, or the LAN address when that is `localhost`. URLs carry `?play`, which selects the video and resumes a paused torrent like Play in the page. No subtitles: VLC reads a playlist's `sub-file` as a local path and refuses `input-slave`. Step 3.11. See [Watching on a TV](#watching-on-a-tv) |
+| 36 | Where the disk limit setting is kept, and what happens at the limit | Decided | One JSON file, `DOWNLOAD_DIR/.settings.json`, written atomically like `.torrents` and changed from the page through `/api/settings`; `DISK_LIMIT_GB` is only the default (owner, 30 Oct 26). At the limit, torrents still downloading pause (`diskFull`) and adding or resuming answers `507`; they resume once usage is below it. Step 4.3. See [Disk limit and settings](#disk-limit-and-settings) |

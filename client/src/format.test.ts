@@ -57,6 +57,7 @@ describe('stateLabel', () => {
     ['seeding', 'seeding', 'Seeding'],
     ['noPeers', 'noPeers', 'No peers yet, still searching'],
     ['paused', 'paused', 'Paused'],
+    ['diskFull', 'diskFull', 'Paused: disk limit reached'],
     ['error', 'error', 'Failed'],
   ] as const)('labels %s', (state, tone, label) => {
     expect(stateLabel({ ...base, state })).toEqual({ tone, label });

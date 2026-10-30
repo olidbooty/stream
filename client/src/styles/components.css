@@ -188,6 +188,10 @@ h2 {
 .state-badge[data-tone="paused"] {
   --badge-color: var(--color-state-paused);
 }
+/* Amber like noPeers: it needs the user to free space or raise the limit. */
+.state-badge[data-tone="diskFull"] {
+  --badge-color: var(--color-state-noPeers);
+}
 
 /* Progress bar */
 .progress {
@@ -493,5 +497,29 @@ h2 {
 .tv-playlist__copied,
 .tv-playlist__note {
   color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Settings: the disk limit */
+.settings {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings p {
+  margin: 0;
+}
+
+.settings__usage {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.settings__usage[data-reached="true"] {
+  color: var(--color-state-noPeers);
+}
+
+.settings__saved {
+  color: var(--color-state-seeding);
   font-size: var(--text-sm);
 }

@@ -1,3 +1,4 @@
+import type { SettingsInfo } from '../../../server/settings-api.js';
 import type { TorrentSummary } from '../../../server/torrents-api.js';
 import { ApiError } from '../api.js';
 import { isDownloadSlow, slowDownloadMessage } from '../buffer-health.js';
@@ -12,6 +13,7 @@ import {
   pictureMissingProblem,
 } from '../media-error.js';
 import { sampleDetail, sampleSummary } from '../sample-data.js';
+import { settingsPanel } from '../settings-panel.js';
 import { torrentForm } from '../torrent-form.js';
 import { torrentList } from '../torrent-list.js';
 import { tvPlaylist } from '../tv-playlist.js';
@@ -94,6 +96,12 @@ const BADGE_TORRENTS: Record<StateLabel['tone'], TorrentSummary> = {
   seeding,
   noPeers: sampleSummary({ ...pendingMagnet, state: 'noPeers' }),
   paused,
+  diskFull: sampleSummary({
+    state: 'diskFull',
+    numPeers: 0,
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+  }),
   error: failed,
 };
 
@@ -207,6 +215,19 @@ function tv(playlistUrls: string[]): HTMLElement {
   });
   t.update(playlistUrls);
   return t.element;
+}
+
+const GB = 1_000_000_000;
+
+function settings(info: SettingsInfo): HTMLElement {
+  const panel = settingsPanel({
+    api: {
+      getSettings: async () => info,
+      saveSettings: async () => info,
+    },
+  });
+  panel.update(info);
+  return panel.element;
 }
 
 function textInput(placeholder = ''): HTMLInputElement {
@@ -472,5 +493,53 @@ export const entries: GalleryEntry[] = [
     component: 'Watch on TV',
     state: 'no network',
     render: () => tv([]),
+  },
+  {
+    component: 'Settings',
+    state: 'no limit',
+    render: () =>
+      settings({
+        diskLimit: null,
+        diskUsed: 12.4 * GB,
+        diskLimitReached: false,
+      }),
+  },
+  {
+    component: 'Settings',
+    state: 'under the limit',
+    render: () =>
+      settings({
+        diskLimit: 50 * GB,
+        diskUsed: 12.4 * GB,
+        diskLimitReached: false,
+      }),
+  },
+  {
+    component: 'Settings',
+    state: 'limit reached',
+    render: () =>
+      settings({
+        diskLimit: 50 * GB,
+        diskUsed: 50.2 * GB,
+        diskLimitReached: true,
+      }),
+  },
+  {
+    component: 'Settings',
+    state: 'invalid limit',
+    render: () => {
+      const element = settings({
+        diskLimit: 50 * GB,
+        diskUsed: 12.4 * GB,
+        diskLimitReached: false,
+      });
+      const input = element.querySelector('input');
+      const form = element.querySelector('form');
+      if (input && form) {
+        input.value = 'lots';
+        form.requestSubmit();
+      }
+      return element;
+    },
   },
 ];

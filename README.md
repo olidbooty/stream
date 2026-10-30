@@ -34,6 +34,7 @@ over TCP, uTP and WebRTC. It is configured with environment variables:
 | `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
 | `DHT_PORT`     | `6882`        | UDP port for the DHT. `0` picks a random port |
 | `PORT_MAPPING` | `0`           | `1` lets the client ask your router to forward the peer port (UPnP and NAT-PMP) |
+| `DISK_LIMIT_GB` | none         | Starting disk limit for the torrents, in decimal GB (`50`, `1.5`). Only used until a limit is saved under Settings on the page, which then wins |
 
 The startup log shows the peer port, which kinds of peers the client can use
 and where downloads go. `GET /api/client` also returns the peer port.
@@ -215,6 +216,20 @@ is kept, re-checked at startup ("Checking files" for a while on a large
 torrent), and the download carries on from there. Failed torrents are not
 restored. Delete `DOWNLOAD_DIR/.torrents` to start with an empty list.
 
+The disk limit (Decision #36) is set under Settings at the bottom of the page
+and saved in `DOWNLOAD_DIR/.settings.json`, so every device sees the same
+limit and it survives a restart. Once the torrents' data reaches it, every
+torrent still downloading pauses ("Paused: disk limit reached"), and adding
+or resuming one answers `507`. Finished torrents keep seeding, and what is on
+disk still plays. Removing a torrent or raising the limit lets the paused
+ones carry on by themselves. The same setting is at `/api/settings`:
+
+```sh
+curl localhost:1234/api/settings
+curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
+  -d '{"diskLimit": 50000000000}'   # bytes; null for no limit
+```
+
 ## Layout
 
 ```
@@ -230,6 +245,10 @@ server/torrent-client.ts  WebTorrent client setup, config from env vars
 server/torrents-api.ts    /api/torrents routes
 server/torrent-state.ts   torrent state (connecting, noPeers, ...) and failed torrents
 server/saved-torrents.ts  saves torrents in DOWNLOAD_DIR/.torrents and loads them at startup
+server/atomic-file.ts     writes a file through a temporary file and rename()
+server/settings.ts        the user's settings in DOWNLOAD_DIR/.settings.json
+server/settings-api.ts    /api/settings
+server/disk-limit.ts      pauses downloads at the disk limit
 server/event-stream.ts    server-sent events broadcaster
 server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation
@@ -243,6 +262,7 @@ client/src/live-updates.ts  the page's one event stream (Decision #21)
 client/src/torrent-form.ts  add a magnet link or .torrent file
 client/src/torrent-list.ts  the live torrent list and its file lists
 client/src/tv-playlist.ts   Watch on TV: the playlist address for VLC
+client/src/settings-panel.ts  Settings: the disk limit and how much is used
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)

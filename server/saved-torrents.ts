@@ -1,13 +1,7 @@
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
+import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import parseTorrent, { type Instance as ParsedTorrent } from 'parse-torrent';
+import { writeFileAtomically } from './atomic-file.js';
 import { isMagnetURI } from './magnet.js';
 
 // Decision #13: the torrent list survives a restart. Each torrent is saved in
@@ -54,8 +48,8 @@ function isChoices(value: unknown): value is TorrentChoices {
   );
 }
 
-// Writes go through a temporary file and rename(), so a crash mid-write leaves
-// the previous version rather than half a file. Writes for one torrent run in
+// Writes go through writeFileAtomically(), so a crash mid-write leaves the
+// previous version rather than half a file. Writes for one torrent run in
 // order, so a quick pause and resume can't land the wrong way round.
 export class SavedTorrents {
   readonly dir: string;
@@ -87,23 +81,16 @@ export class SavedTorrents {
     return next;
   }
 
-  private async write(path: string, data: string | Uint8Array): Promise<void> {
-    const temporary = `${path}.tmp`;
-    await mkdir(this.dir, { recursive: true });
-    await writeFile(temporary, data);
-    await rename(temporary, path);
-  }
-
   save(infoHash: string, choices: TorrentChoices): Promise<void> {
     const path = this.path(infoHash, 'json');
     return this.queue(infoHash, () =>
-      this.write(path, `${JSON.stringify(choices, null, 2)}\n`),
+      writeFileAtomically(path, `${JSON.stringify(choices, null, 2)}\n`),
     );
   }
 
   saveTorrentFile(infoHash: string, torrentFile: Uint8Array): Promise<void> {
     const path = this.path(infoHash, 'torrent');
-    return this.queue(infoHash, () => this.write(path, torrentFile));
+    return this.queue(infoHash, () => writeFileAtomically(path, torrentFile));
   }
 
   delete(infoHash: string): Promise<void> {

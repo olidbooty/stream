@@ -247,8 +247,9 @@ Record what you checked by hand in the pull request description.
 Step 4.1's browser matrix ([ARCHITECTURE.md](ARCHITECTURE.md#codec-support))
 plays a set of synthetic clips through the app. It needs `ffmpeg` with
 `libx264`, `libx265`, `libsvtav1`, `libvpx`, `libopus`, `libvorbis`,
-`libmp3lame`, `libxvid` and `libtheora`, which Homebrew's and Debian's builds
-include.
+`libmp3lame`, `libxvid` and `libtheora` (`brew install ffmpeg` on macOS,
+`sudo apt install ffmpeg` on Debian). A clip whose encoder is missing is
+skipped with a message and the rest are still made.
 
 1. `npm run codec-clips` writes 19 clips of 10 seconds to `codec-clips/`
    (gitignored), named `<container>-<video>-<audio>`.

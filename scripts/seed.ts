@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { readdir, stat } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import WebTorrent, { type Torrent } from 'webtorrent';
 
 // Step 4.1: seeds a file or folder (such as the codec clips) from a separate
@@ -9,11 +10,36 @@ import WebTorrent, { type Torrent } from 'webtorrent';
 //
 //   npm run seed -- <file or folder>
 
+// WebTorrent rejects an empty folder only as an 'Invalid torrent identifier'.
+// Hidden files such as .DS_Store don't count; WebTorrent skips them too.
+async function hasFiles(path: string): Promise<boolean> {
+  const info = await stat(path).catch(() => null);
+  if (info === null) return false;
+  if (info.isFile()) return true;
+  if (!info.isDirectory()) return false;
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.isFile() || (await hasFiles(join(path, entry.name)))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function main(argv: string[]): Promise<void> {
   const input = argv[0];
   if (!input) {
     console.error('Usage: npm run seed -- <file or folder>');
     process.exitCode = 2;
+    return;
+  }
+  const path = resolve(input);
+  if (!(await hasFiles(path))) {
+    console.error(
+      `Nothing to seed: ${path} is missing or has no files. ` +
+        'For the codec clips, run npm run codec-clips first.',
+    );
+    process.exitCode = 1;
     return;
   }
   // Port 0: never clashes with the app's TORRENT_PORT.
@@ -30,7 +56,7 @@ async function main(argv: string[]): Promise<void> {
     process.exit(1);
   });
   const torrent = await new Promise<Torrent>((done) => {
-    client.seed(resolve(input), { announce: [] }, done);
+    client.seed(path, { announce: [] }, done);
   });
   const port = (client.address() as { port: number }).port;
   console.log(`Seeding ${torrent.name} (${torrent.files.length} files)`);

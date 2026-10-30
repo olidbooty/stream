@@ -111,6 +111,10 @@ export const CLIPS: Clip[] = [
   },
 ];
 
+const INSTALL_FFMPEG = `ffmpeg not found. Install it and run this again:
+  macOS:                 brew install ffmpeg
+  Debian, Ubuntu, Pi OS: sudo apt install ffmpeg`;
+
 async function makeClip(dir: string, clip: Clip): Promise<string> {
   const output = join(dir, clip.file);
   await run('ffmpeg', [
@@ -148,11 +152,29 @@ async function main(argv: string[]): Promise<void> {
   const fixturesDir =
     fixturesAt === -1 ? null : resolve(argv.splice(fixturesAt, 2)[1] ?? '');
   const dir = resolve(argv[0] ?? 'codec-clips');
+  try {
+    await run('ffmpeg', ['-version']);
+  } catch {
+    console.error(INSTALL_FFMPEG);
+    process.exitCode = 1;
+    return;
+  }
   await mkdir(dir, { recursive: true });
   if (fixturesDir) await mkdir(fixturesDir, { recursive: true });
 
+  const failed: string[] = [];
   for (const clip of CLIPS) {
-    const output = await makeClip(dir, clip);
+    let output: string;
+    try {
+      output = await makeClip(dir, clip);
+    } catch (error) {
+      // Usually an encoder this ffmpeg build lacks; the other clips still
+      // make a useful matrix.
+      const stderr = (error as { stderr?: string }).stderr?.trim();
+      console.error(`${clip.file}: ${stderr || String(error)}`);
+      failed.push(clip.file);
+      continue;
+    }
     console.log(output);
     if (fixturesDir) {
       const json = await runFfprobe(output);
@@ -161,6 +183,13 @@ async function main(argv: string[]): Promise<void> {
         fixture(json),
       );
     }
+  }
+  if (failed.length > 0) {
+    console.error(
+      `${failed.length} of ${CLIPS.length} clips failed, most likely an ` +
+        'encoder missing from this ffmpeg build. The others are ready.',
+    );
+    process.exitCode = 1;
   }
 }
 

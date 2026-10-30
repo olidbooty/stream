@@ -29,6 +29,9 @@ const HEVC = [
 ];
 const AAC = ['-c:a', 'aac', '-b:a', '128k'];
 const SURROUND = ['-ac', '6'];
+// ffmpeg's built-in Vorbis encoder, because Homebrew's ffmpeg has no
+// libvorbis. It is marked experimental and only encodes stereo.
+const VORBIS = ['-c:a', 'vorbis', '-strict', '-2', '-ac', '2'];
 
 interface Clip {
   file: string;
@@ -91,8 +94,7 @@ export const CLIPS: Clip[] = [
       '8',
       '-b:v',
       '1M',
-      '-c:a',
-      'libvorbis',
+      ...VORBIS,
     ],
   },
   {
@@ -101,13 +103,16 @@ export const CLIPS: Clip[] = [
   },
   {
     file: 'avi-xvid-mp3.avi',
-    args: ['-c:v', 'libxvid', '-q:v', '5', '-c:a', 'libmp3lame'],
+    // ffmpeg's own MPEG-4 Part 2 encoder tagged as Xvid, which is what
+    // players see in an Xvid file; libxvid isn't in every ffmpeg build.
+    args: ['-c:v', 'mpeg4', '-vtag', 'XVID', '-q:v', '5', '-c:a', 'libmp3lame'],
   },
   { file: 'mov-h264-aac.mov', args: [...H264, ...AAC] },
   { file: 'ts-h264-aac.ts', args: [...H264, ...AAC] },
   {
     file: 'ogv-theora-vorbis.ogv',
-    args: ['-c:v', 'libtheora', '-q:v', '6', '-c:a', 'libvorbis'],
+    // Theora has no built-in encoder: this clip needs libtheora.
+    args: ['-c:v', 'libtheora', '-q:v', '6', ...VORBIS],
   },
 ];
 

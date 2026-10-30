@@ -24,8 +24,8 @@
       "r_frame_rate": "25/1",
       "avg_frame_rate": "25/1",
       "time_base": "1/1000",
-      "start_pts": 3,
-      "start_time": "0.003000",
+      "start_pts": 0,
+      "start_time": "0.000000",
       "disposition": {
         "default": 0,
         "dub": 0,
@@ -48,7 +48,7 @@
       },
       "tags": {
         "ENCODER": "Lavc60.31.102 libvpx",
-        "DURATION": "00:00:10.003000000"
+        "DURATION": "00:00:10.000000000"
       }
     },
     {
@@ -60,16 +60,16 @@
       "codec_tag": "0x0000",
       "sample_fmt": "fltp",
       "sample_rate": "44100",
-      "channels": 1,
-      "channel_layout": "mono",
+      "channels": 2,
+      "channel_layout": "stereo",
       "bits_per_sample": 0,
-      "initial_padding": 0,
+      "initial_padding": 1024,
       "r_frame_rate": "0/0",
       "avg_frame_rate": "0/0",
       "time_base": "1/1000",
-      "start_pts": 0,
-      "start_time": "0.000000",
-      "extradata_size": 3315,
+      "start_pts": -23,
+      "start_time": "-0.023000",
+      "extradata_size": 3296,
       "disposition": {
         "default": 0,
         "dub": 0,
@@ -91,8 +91,8 @@
         "still_image": 0
       },
       "tags": {
-        "ENCODER": "Lavc60.31.102 libvorbis",
-        "DURATION": "00:00:10.003000000"
+        "ENCODER": "Lavc60.31.102 vorbis",
+        "DURATION": "00:00:10.024000000"
       }
     }
   ],
@@ -101,10 +101,10 @@
     "nb_programs": 0,
     "format_name": "matroska,webm",
     "format_long_name": "Matroska / WebM",
-    "start_time": "0.000000",
-    "duration": "10.003000",
-    "size": "1289383",
-    "bit_rate": "1031197",
+    "start_time": "-0.023000",
+    "duration": "10.024000",
+    "size": "1309926",
+    "bit_rate": "1045431",
     "probe_score": 100,
     "tags": {
       "ENCODER": "Lavf60.16.100"

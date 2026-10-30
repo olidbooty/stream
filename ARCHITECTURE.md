@@ -140,7 +140,7 @@ missing and no error. **Error 4**: `MEDIA_ERR_SRC_NOT_SUPPORTED`.
 | Clip | Chromium 153 (Linux) | Chrome (Mac) | Safari (Mac) | Firefox (Mac) | TV |
 | ---- | -------------------- | ------------ | ------------ | ------------- | -- |
 | MP4 H.264 / AAC | Plays | | | Plays | |
-| MP4 H.264 High 10 (10-bit) / AAC | Plays | | | ? | |
+| MP4 H.264 High 10 (10-bit) / AAC | Plays | | | Plays | |
 | MP4 H.264 / MP3 | Plays | | | Plays | |
 | MP4 H.264 / AC-3 5.1 | No sound | | | No sound | |
 | MP4 H.264 / E-AC-3 5.1 | No sound | | | No sound | |

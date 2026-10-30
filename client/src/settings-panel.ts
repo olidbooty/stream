@@ -103,7 +103,7 @@ export function settingsPanel({
     saved,
   );
   form.noValidate = true;
-  // Decision #37: files no torrent owns, deleted only when the user asks.
+  // Decision #38: files no torrent owns, deleted only when the user asks.
   const leftoverList = el('ul', { className: 'settings__leftovers' });
   const leftoverError = el('p', {
     className: 'field__error',

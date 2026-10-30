@@ -232,7 +232,7 @@ curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
 
 Files and folders in `DOWNLOAD_DIR` that no torrent owns, for example from a
 torrent removed while the server was down, are listed under Settings as
-leftover files (Decision #37), each with a Delete button. Nothing is deleted
+leftover files (Decision #38), each with a Delete button. Nothing is deleted
 until you press it. `GET /api/leftovers` lists them and
 `DELETE /api/leftovers/<name>` deletes one.
 

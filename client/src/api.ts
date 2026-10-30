@@ -37,7 +37,7 @@ export interface Api {
   // the keys to change and answers like getSettings().
   getSettings(): Promise<SettingsInfo>;
   saveSettings(settings: Partial<Settings>): Promise<SettingsInfo>;
-  // Files in DOWNLOAD_DIR no torrent owns, and deleting one (Decision #37).
+  // Files in DOWNLOAD_DIR no torrent owns, and deleting one (Decision #38).
   getLeftovers(): Promise<LeftoversInfo>;
   deleteLeftover(name: string): Promise<void>;
 }

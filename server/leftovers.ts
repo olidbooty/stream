@@ -104,7 +104,7 @@ export interface LeftoversRouterOptions {
   downloadDir: string;
 }
 
-// Decision #37: leftovers are listed under Settings and only deleted when the
+// Decision #38: leftovers are listed under Settings and only deleted when the
 // user presses Delete, one at a time, since DOWNLOAD_DIR may also hold the
 // user's own files.
 export function leftoversRouter({

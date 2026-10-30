@@ -16,7 +16,7 @@ import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import { leftoversRouter, removeEmptyFolders } from './leftovers.js';
 import { torrentsRouter } from './torrents-api.js';
 
-// Decision #37: files and folders in DOWNLOAD_DIR that no torrent owns are
+// Decision #38: files and folders in DOWNLOAD_DIR that no torrent owns are
 // listed, and deleted only when asked, one at a time.
 
 const HASH = '0123456789abcdef0123456789abcdef01234567';

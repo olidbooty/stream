@@ -51,6 +51,18 @@ on an ephemeral port with `app.listen(0)`, reads events with `fetch` and a
 stream reader, then aborts (see `GET /events` in
 `server/torrents-api.test.ts`).
 
+A restart is two routers on the same directory. `server/saved-torrents.test.ts`
+and `server/torrents-restore.test.ts` give each test its own `DOWNLOAD_DIR`
+from `mkdtempSync()`, build a router with a `SavedTorrents` on it, then build
+a second one with a fresh `FakeWebTorrent` from what `saved.load()` returns,
+as `server/start.ts` does at startup (Decision #13). Remove the directory in
+`afterEach`.
+
+The TV playlist's addresses depend on the request's `Host` header and the
+machine's LAN addresses, so `server/tv-playlist.test.ts` sets `Host` with
+supertest's `.set()` and passes `createApp()` its own `lanAddresses`
+function rather than reading the real network interfaces.
+
 ## Client tests
 
 `client/src/main.ts` is the entry point and runs as soon as it is imported,

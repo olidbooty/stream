@@ -230,6 +230,12 @@ curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
   -d '{"diskLimit": 50000000000}'   # bytes; null for no limit
 ```
 
+Files and folders in `DOWNLOAD_DIR` that no torrent owns, for example from a
+torrent removed while the server was down, are listed under Settings as
+leftover files (Decision #37), each with a Delete button. Nothing is deleted
+until you press it. `GET /api/leftovers` lists them and
+`DELETE /api/leftovers/<name>` deletes one.
+
 ## Layout
 
 ```
@@ -249,6 +255,7 @@ server/atomic-file.ts     writes a file through a temporary file and rename()
 server/settings.ts        the user's settings in DOWNLOAD_DIR/.settings.json
 server/settings-api.ts    /api/settings
 server/disk-limit.ts      pauses downloads at the disk limit
+server/leftovers.ts       /api/leftovers: files in DOWNLOAD_DIR no torrent owns
 server/event-stream.ts    server-sent events broadcaster
 server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation
@@ -262,7 +269,7 @@ client/src/live-updates.ts  the page's one event stream (Decision #21)
 client/src/torrent-form.ts  add a magnet link or .torrent file
 client/src/torrent-list.ts  the live torrent list and its file lists
 client/src/tv-playlist.ts   Watch on TV: the playlist address for VLC
-client/src/settings-panel.ts  Settings: the disk limit and how much is used
+client/src/settings-panel.ts  Settings: the disk limit, usage and leftover files
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)

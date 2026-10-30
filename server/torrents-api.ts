@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import express, {
   type ErrorRequestHandler,
   type Request,
@@ -13,6 +14,7 @@ import type { Torrent } from 'webtorrent';
 import type { DiskLimit } from './disk-limit.js';
 import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { streamFile } from './file-stream.js';
+import { removeEmptyFolders } from './leftovers.js';
 import { isMagnetURI } from './magnet.js';
 import {
   type FileMedia,
@@ -570,7 +572,14 @@ export function torrentsRouter({
     const found = torrentFromParams(req, res);
     if (!found) return;
     if (found.torrent) {
+      // A multi-file torrent's folder, which its store leaves behind empty.
+      const folder = hasMetadata(found.torrent)
+        ? found.torrent.files[0]?.path.split(/[/\\]/)[0]
+        : undefined;
       await removeTorrent(client, found.torrent.infoHash);
+      if (folder && found.torrent.files.length > 1) {
+        await removeEmptyFolders(join(downloadDir, folder));
+      }
       await saved?.delete(found.torrent.infoHash);
       // Resume what the limit paused, if this freed enough.
       disk?.check();

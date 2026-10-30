@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { LeftoversInfo } from '../../server/leftovers.js';
 import type { SettingsInfo } from '../../server/settings-api.js';
 import { ApiError } from './api.js';
 import {
@@ -20,12 +21,27 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+const NONE: LeftoversInfo = { pending: false, leftovers: [] };
+
 function setUp(
   getSettings: () => Promise<SettingsInfo> = async () => UNDER,
   saveSettings = vi.fn(async (): Promise<SettingsInfo> => UNDER),
   now = () => 0,
+  {
+    getLeftovers = vi.fn(async () => NONE),
+    deleteLeftover = vi.fn(async () => {}),
+    confirm = vi.fn(async () => true),
+  }: {
+    getLeftovers?: () => Promise<LeftoversInfo>;
+    deleteLeftover?: (name: string) => Promise<void>;
+    confirm?: (message: string) => Promise<boolean>;
+  } = {},
 ) {
-  const panel = settingsPanel({ api: { getSettings, saveSettings }, now });
+  const panel = settingsPanel({
+    api: { getSettings, saveSettings, getLeftovers, deleteLeftover },
+    confirm,
+    now,
+  });
   document.body.append(panel.element);
   const input = panel.element.querySelector('input') as HTMLInputElement;
   const form = panel.element.querySelector('form') as HTMLFormElement;
@@ -171,5 +187,113 @@ describe('settingsPanel', () => {
     panel.setShown(true);
     panel.refresh();
     expect(getSettings).toHaveBeenCalledTimes(2);
+  });
+
+  describe('leftover files', () => {
+    const TWO: LeftoversInfo = {
+      pending: false,
+      leftovers: [
+        { name: 'Old Film', folder: true, bytes: 4 * GB },
+        { name: 'stray.mp4', folder: false, bytes: 2_000_000 },
+      ],
+    };
+    const names = (element: HTMLElement) =>
+      Array.from(element.querySelectorAll('.settings__leftover-name')).map(
+        (node) => node.textContent,
+      );
+    const leftoversSection = (element: HTMLElement) =>
+      element.querySelector('.settings__leftovers')
+        ?.parentElement as HTMLElement;
+
+    it('lists them with their size, folders marked', async () => {
+      const { panel } = setUp(undefined, undefined, undefined, {
+        getLeftovers: async () => TWO,
+      });
+      await panel.load();
+      expect(leftoversSection(panel.element).hidden).toBe(false);
+      expect(names(panel.element)).toEqual(['Old Film/', 'stray.mp4']);
+      expect(panel.element.textContent).toContain('4.0 GB');
+    });
+
+    it('hides the list when there are none or it can’t tell yet', async () => {
+      const { panel } = setUp();
+      await panel.load();
+      expect(leftoversSection(panel.element).hidden).toBe(true);
+      panel.updateLeftovers({ ...TWO, pending: true });
+      expect(leftoversSection(panel.element).hidden).toBe(true);
+    });
+
+    it('deletes one after confirming, then lists the rest', async () => {
+      const getLeftovers = vi
+        .fn(async () => TWO)
+        .mockResolvedValueOnce(TWO)
+        .mockResolvedValueOnce({ ...TWO, leftovers: [TWO.leftovers[1]] });
+      const deleteLeftover = vi.fn(async () => {});
+      const confirm = vi.fn(async () => true);
+      const { panel } = setUp(undefined, undefined, undefined, {
+        getLeftovers,
+        deleteLeftover,
+        confirm,
+      });
+      await panel.load();
+      const button = panel.element.querySelector(
+        '[aria-label="Delete Old Film"]',
+      ) as HTMLButtonElement;
+      button.click();
+      await flush();
+
+      expect(confirm).toHaveBeenCalledWith(
+        'Delete the folder “Old Film” and everything in it? This can’t be undone.',
+      );
+      expect(deleteLeftover).toHaveBeenCalledWith('Old Film');
+      expect(names(panel.element)).toEqual(['stray.mp4']);
+    });
+
+    it('does nothing when the confirmation is cancelled', async () => {
+      const deleteLeftover = vi.fn(async () => {});
+      const { panel } = setUp(undefined, undefined, undefined, {
+        getLeftovers: async () => TWO,
+        deleteLeftover,
+        confirm: async () => false,
+      });
+      await panel.load();
+      (
+        panel.element.querySelector(
+          '[aria-label="Delete stray.mp4"]',
+        ) as HTMLButtonElement
+      ).click();
+      await flush();
+      expect(deleteLeftover).not.toHaveBeenCalled();
+    });
+
+    it('shows why a delete failed', async () => {
+      const { panel } = setUp(undefined, undefined, undefined, {
+        getLeftovers: async () => TWO,
+        deleteLeftover: async () => {
+          throw new ApiError(404, 'No leftover with that name');
+        },
+      });
+      await panel.load();
+      (
+        panel.element.querySelector(
+          '[aria-label="Delete stray.mp4"]',
+        ) as HTMLButtonElement
+      ).click();
+      await flush();
+      expect(
+        leftoversSection(panel.element).querySelector('[role="alert"]')
+          ?.textContent,
+      ).toBe('Couldn’t delete stray.mp4: No leftover with that name');
+    });
+
+    it('keeps the rows, and focus, when a refresh brings the same list', async () => {
+      const { panel } = setUp(undefined, undefined, undefined, {
+        getLeftovers: async () => TWO,
+      });
+      await panel.load();
+      const row = panel.element.querySelector('.settings__leftover');
+      panel.updateLeftovers(TWO);
+      expect(panel.element.querySelector('.settings__leftover')).toBe(row);
+    });
   });
 });

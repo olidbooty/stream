@@ -250,7 +250,9 @@ hand:
    little above what the torrents use now, and play or add something. Once
    usage reaches it, the downloading torrents show "Paused: disk limit
    reached" and adding another is refused; raising the limit resumes them.
-   A restart keeps the limit.
+   A restart keeps the limit. Put a folder of your own in `DOWNLOAD_DIR`
+   and reload: it shows under Leftover files, and Delete removes it after
+   the confirmation.
 
 7. To see how playback copes when peers slow down (step 3.5), seed a file
    you made from a second WebTorrent client on the same machine with the

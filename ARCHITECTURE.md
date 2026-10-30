@@ -494,8 +494,9 @@ first added, through `filterSources()` and `addTorrent()` like a new one:
 `.torrents` sits inside `DOWNLOAD_DIR`, so a torrent whose top folder is
 named `.torrents` could overwrite an entry. That is accepted: entries are
 validated like API input, so the worst it can do is add or drop a torrent,
-which anyone on the LAN can already do (Decision #12). Deleting files that no
-saved torrent owns comes in 4.3.
+which anyone on the LAN can already do (Decision #12). Files that no torrent
+owns are listed for the user to delete; see
+[Leftover files](#leftover-files).
 
 ### Disk limit and settings
 
@@ -534,6 +535,26 @@ grows, so the user sets a limit on the page.
   user's again: a pause by the limit is never saved to `.torrents`, so after
   a restart the limit decides again. A torrent can overshoot by what it
   downloads in one second.
+
+### Leftover files
+
+Decision #37, replacing the automatic cleanup Decision #13 planned:
+`DOWNLOAD_DIR` may hold the user's own files, and a delete can't be undone,
+so nothing is deleted without the user asking. `server/leftovers.ts`:
+
+- `GET /api/leftovers` lists the top-level files and folders no running
+  torrent's files are under (`.torrents`, `.settings.json` and its temporary
+  file are never listed), with what each takes on disk (blocks, like `du`;
+  symbolic links are not followed), biggest first. While any torrent is
+  still fetching its file list it may own any entry, so the answer is
+  `{"pending": true}` with nothing listed.
+- `DELETE /api/leftovers/:name` deletes one, only if the list shows that name
+  right now (so `..` or `.torrents` can't be named); `409` while pending.
+- The page lists them under Settings, each with a Delete button and a
+  confirmation.
+- Decision #35: `DELETE /api/torrents/:infoHash` on a multi-file torrent
+  also removes the folders its store leaves behind, but only folders with
+  nothing left in them.
 
 ### Streaming
 
@@ -715,7 +736,7 @@ design stays next to the code.
 | 10 | Native modules without prebuilt binaries | Decided | Support Linux x64, macOS, Windows and Raspberry Pi. 2.6 adds a startup check: without `utp-native` the client logs that it is TCP-only; if `node-datachannel` fails to load it runs without WebRTC instead of crashing. The README lists the build tools needed on ARM |
 | 11 | Torrents make the server contact hosts the adder chose | Decided | Strip a magnet's `xs=` URL before `client.add()`. Drop tracker and web seed URLs that aren't http(s)/udp/wss or whose host is localhost or a literal loopback, private, link-local or unspecified IP. Hostnames that resolve to LAN addresses still pass. Implemented in 2.6, before 2.5. See [Network exposure](#network-exposure) |
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents and change the settings; the disk limit (#36) caps disk use |
-| 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` (the magnet until metadata arrives), delete it on removal, re-add them all at startup, then delete files no saved torrent owns. Saving and restoring, with the selection and paused state, implemented in 4.3a (split from 4.3); shutdown no longer deletes downloads. Deleting unowned files stays in 4.3. See [Restoring torrents after a restart](#restoring-torrents-after-a-restart) |
+| 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` (the magnet until metadata arrives), delete it on removal, re-add them all at startup, and list files no torrent owns for the user to delete (#37, not deleted automatically). Saving and restoring, with the selection and paused state, implemented in 4.3a (split from 4.3); shutdown no longer deletes downloads. See [Restoring torrents after a restart](#restoring-torrents-after-a-restart) |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |
@@ -735,3 +756,4 @@ design stays next to the code.
 | 30 | Dark mode can only follow the OS setting | Decided | `data-theme="light"` or `"dark"` on `<html>` forces a theme; without it `prefers-color-scheme` decides. Plain duplicated dark values rather than CSS `light-dark()`, which older TV browsers lack. Step 2.7 |
 | 32 | How VLC on a TV finds the videos | Decided | `GET /tv.m3u`, an M3U playlist of every video (samples left out) with absolute stream URLs on the host the TV fetched it from, or the LAN address when that is `localhost`. URLs carry `?play`, which selects the video and resumes a paused torrent like Play in the page. No subtitles: VLC reads a playlist's `sub-file` as a local path and refuses `input-slave`. Step 3.11. See [Watching on a TV](#watching-on-a-tv) |
 | 36 | Where the disk limit setting is kept, and what happens at the limit | Decided | One JSON file, `DOWNLOAD_DIR/.settings.json`, written atomically like `.torrents` and changed from the page through `/api/settings`; `DISK_LIMIT_GB` is only the default (owner, 30 Oct 26). At the limit, torrents still downloading pause (`diskFull`) and adding or resuming answers `507`; they resume once usage is below it (owner, 30 Oct 26). Step 4.3. See [Disk limit and settings](#disk-limit-and-settings) |
+| 37 | Cleaning up files no torrent owns | Decided | Listed under Settings (`GET /api/leftovers`) with a Delete button per entry, never deleted automatically at startup, since `DOWNLOAD_DIR` may hold the user's own files (owner, 30 Oct 26). Nothing is listed while a torrent lacks its file list. Removing a multi-file torrent also removes its empty folders (#35). Step 4.3. See [Leftover files](#leftover-files) |

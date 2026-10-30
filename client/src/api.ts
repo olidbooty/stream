@@ -1,3 +1,4 @@
+import type { LeftoversInfo } from '../../server/leftovers.js';
 import type { Settings } from '../../server/settings.js';
 import type { SettingsInfo } from '../../server/settings-api.js';
 import type {
@@ -36,6 +37,9 @@ export interface Api {
   // the keys to change and answers like getSettings().
   getSettings(): Promise<SettingsInfo>;
   saveSettings(settings: Partial<Settings>): Promise<SettingsInfo>;
+  // Files in DOWNLOAD_DIR no torrent owns, and deleting one (Decision #37).
+  getLeftovers(): Promise<LeftoversInfo>;
+  deleteLeftover(name: string): Promise<void>;
 }
 
 // URLs the <video> and <track> elements load themselves.
@@ -72,6 +76,7 @@ export function createApi(
   base = '/api/torrents',
   tvUrl = '/api/tv',
   settingsUrl = '/api/settings',
+  leftoversUrl = '/api/leftovers',
 ): Api {
   async function request(path: string, init?: RequestInit): Promise<Response> {
     return send(`${base}${path}`, init);
@@ -137,6 +142,14 @@ export function createApi(
         body: JSON.stringify(settings),
       });
       return res.json();
+    },
+    async getLeftovers() {
+      return (await send(leftoversUrl)).json();
+    },
+    async deleteLeftover(name) {
+      await send(`${leftoversUrl}/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      });
     },
   };
 }

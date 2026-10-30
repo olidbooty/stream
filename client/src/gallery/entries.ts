@@ -1,3 +1,4 @@
+import type { LeftoversInfo } from '../../../server/leftovers.js';
 import type { SettingsInfo } from '../../../server/settings-api.js';
 import type { TorrentSummary } from '../../../server/torrents-api.js';
 import { ApiError } from '../api.js';
@@ -219,14 +220,22 @@ function tv(playlistUrls: string[]): HTMLElement {
 
 const GB = 1_000_000_000;
 
-function settings(info: SettingsInfo): HTMLElement {
+function settings(
+  info: SettingsInfo,
+  leftovers: LeftoversInfo = { pending: false, leftovers: [] },
+): HTMLElement {
   const panel = settingsPanel({
     api: {
       getSettings: async () => info,
       saveSettings: async () => info,
+      getLeftovers: async () => leftovers,
+      deleteLeftover: async () => {},
     },
+    confirm: (message) =>
+      confirmDialog(document.body, { message, confirmLabel: 'Delete' }),
   });
   panel.update(info);
+  panel.updateLeftovers(leftovers);
   return panel.element;
 }
 
@@ -523,6 +532,21 @@ export const entries: GalleryEntry[] = [
         diskUsed: 50.2 * GB,
         diskLimitReached: true,
       }),
+  },
+  {
+    component: 'Settings',
+    state: 'leftover files',
+    render: () =>
+      settings(
+        { diskLimit: 50 * GB, diskUsed: 12.4 * GB, diskLimitReached: false },
+        {
+          pending: false,
+          leftovers: [
+            { name: 'Old Film (2019)', folder: true, bytes: 4.2 * GB },
+            { name: 'sample.mkv', folder: false, bytes: 38_000_000 },
+          ],
+        },
+      ),
   },
   {
     component: 'Settings',

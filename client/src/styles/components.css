@@ -523,3 +523,23 @@ h2 {
   color: var(--color-state-seeding);
   font-size: var(--text-sm);
 }
+
+.settings__leftovers {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__leftover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.settings__leftover-name {
+  flex: 1 1 var(--width-file-path);
+  overflow-wrap: anywhere;
+}

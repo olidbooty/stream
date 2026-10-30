@@ -1,9 +1,14 @@
+import type { Leftover, LeftoversInfo } from '../../server/leftovers.js';
 import type { SettingsInfo } from '../../server/settings-api.js';
 import type { Api } from './api.js';
 import { formatBytes } from './format.js';
 import { button } from './ui/button.js';
 import { el } from './ui/dom.js';
 import { field } from './ui/field.js';
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
 
 // Decimal, like formatBytes and the server's DISK_LIMIT_GB.
 const GB = 1_000_000_000;
@@ -12,7 +17,12 @@ const GB = 1_000_000_000;
 export const USAGE_REFRESH_MS = 5000;
 
 export interface SettingsPanelOptions {
-  api: Pick<Api, 'getSettings' | 'saveSettings'>;
+  api: Pick<
+    Api,
+    'getSettings' | 'saveSettings' | 'getLeftovers' | 'deleteLeftover'
+  >;
+  // Asked before a leftover is deleted; resolves true to go ahead.
+  confirm: (message: string) => Promise<boolean>;
   now?: () => number;
 }
 
@@ -21,6 +31,8 @@ export interface SettingsPanel {
   // Shows the server's settings and usage; the input is only overwritten
   // while the user isn't editing it.
   update(info: SettingsInfo): void;
+  // Lists the leftover files, or hides the list when there are none.
+  updateLeftovers(info: LeftoversInfo): void;
   // Asks the server for them; hidden if it can't answer.
   load(): Promise<void>;
   // Loads again if the last load is older than USAGE_REFRESH_MS, e.g. on
@@ -62,6 +74,7 @@ export function usageText({
 // the TV address, since it is set once and then rarely changed.
 export function settingsPanel({
   api,
+  confirm,
   now = Date.now,
 }: SettingsPanelOptions): SettingsPanel {
   const limit = field({
@@ -90,6 +103,24 @@ export function settingsPanel({
     saved,
   );
   form.noValidate = true;
+  // Decision #37: files no torrent owns, deleted only when the user asks.
+  const leftoverList = el('ul', { className: 'settings__leftovers' });
+  const leftoverError = el('p', {
+    className: 'field__error',
+    attrs: { role: 'alert' },
+  });
+  const leftovers = el(
+    'div',
+    { className: 'settings' },
+    el('h3', { text: 'Leftover files' }),
+    el('p', {
+      className: 'settings__usage',
+      text: 'In the downloads folder but not part of any torrent here, for example from a torrent removed before a restart. They use disk space but don’t count towards the limit.',
+    }),
+    leftoverList,
+    leftoverError,
+  );
+  leftovers.hidden = true;
   const element = el(
     'section',
     {
@@ -99,7 +130,10 @@ export function settingsPanel({
     el('h2', { text: 'Settings', attrs: { id: 'settings-heading' } }),
     usage,
     form,
+    leftovers,
   );
+  // What the list shows, so a refresh with nothing new keeps focus in it.
+  let shownLeftovers = '';
 
   let loaded = false;
   let shown = true;
@@ -124,6 +158,47 @@ export function settingsPanel({
     if (!editing) limit.input.value = limitText(info.diskLimit);
   }
 
+  function leftoverRow({ name, folder, bytes }: Leftover): HTMLLIElement {
+    const remove = button({
+      label: 'Delete',
+      variant: 'danger',
+      onClick: async () => {
+        leftoverError.textContent = '';
+        const what = folder
+          ? `the folder “${name}” and everything in it`
+          : `“${name}”`;
+        if (!(await confirm(`Delete ${what}? This can’t be undone.`))) return;
+        remove.disabled = true;
+        try {
+          await api.deleteLeftover(name);
+          updateLeftovers(await api.getLeftovers());
+        } catch (err) {
+          leftoverError.textContent = `Couldn’t delete ${name}: ${errorMessage(err, 'something went wrong')}`;
+          remove.disabled = false;
+        }
+      },
+    });
+    remove.setAttribute('aria-label', `Delete ${name}`);
+    return el(
+      'li',
+      { className: 'settings__leftover' },
+      el('span', {
+        className: 'settings__leftover-name',
+        text: folder ? `${name}/` : name,
+      }),
+      el('span', { className: 'settings__usage', text: formatBytes(bytes) }),
+      remove,
+    );
+  }
+
+  function updateLeftovers(info: LeftoversInfo): void {
+    const key = JSON.stringify(info.leftovers);
+    leftovers.hidden = info.pending || info.leftovers.length === 0;
+    if (key === shownLeftovers) return;
+    shownLeftovers = key;
+    leftoverList.replaceChildren(...info.leftovers.map(leftoverRow));
+  }
+
   async function load(): Promise<void> {
     lastLoad = now();
     try {
@@ -132,6 +207,12 @@ export function settingsPanel({
       // Like the TV address: the status banner already says when the
       // server is down.
       if (!loaded) show();
+      return;
+    }
+    try {
+      updateLeftovers(await api.getLeftovers());
+    } catch {
+      // The list stays as it was; the next refresh tries again.
     }
   }
 
@@ -151,7 +232,7 @@ export function settingsPanel({
       update(info);
       saved.textContent = 'Saved';
     } catch (err) {
-      limit.setError(err instanceof Error ? err.message : 'Couldn’t save');
+      limit.setError(errorMessage(err, 'Couldn’t save'));
     } finally {
       save.disabled = false;
     }
@@ -160,6 +241,7 @@ export function settingsPanel({
   return {
     element,
     update,
+    updateLeftovers,
     load,
     refresh() {
       if (shown && now() - lastLoad >= USAGE_REFRESH_MS) void load();

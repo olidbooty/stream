@@ -37,7 +37,11 @@ const list = torrentList({
 const player = createPlayer({ api });
 const form = torrentForm({ api, onAdded: () => void refresh() });
 const tv = tvPlaylist({ api, clipboard: navigator.clipboard });
-const settings = settingsPanel({ api });
+const settings = settingsPanel({
+  api,
+  confirm: (message) =>
+    confirmDialog(document.body, { message, confirmLabel: 'Delete' }),
+});
 
 app.append(
   form,

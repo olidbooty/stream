@@ -57,6 +57,21 @@ describe('createApi', () => {
     });
   });
 
+  it('lists and deletes leftover files', async () => {
+    const info = { pending: false, leftovers: [] };
+    const fetch = vi
+      .fn<Fetch>()
+      .mockImplementation(async () => respond(200, info));
+    const api = createApi(fetch);
+    expect(await api.getLeftovers()).toEqual(info);
+    expect(fetch).toHaveBeenCalledWith('/api/leftovers', undefined);
+    fetch.mockImplementation(async () => respond(204));
+    await api.deleteLeftover('Old Film');
+    expect(fetch).toHaveBeenLastCalledWith('/api/leftovers/Old%20Film', {
+      method: 'DELETE',
+    });
+  });
+
   it('posts a magnet link as JSON', async () => {
     const fetch = stub(respond(201, sampleSummary()));
     await createApi(fetch).addMagnet('magnet:?xt=urn:btih:abc');

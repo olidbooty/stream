@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
 import { DiskLimit } from './disk-limit.js';
+import { leftoversRouter } from './leftovers.js';
 import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
 import { SettingsStore } from './settings.js';
 import { settingsRouter } from './settings-api.js';
@@ -64,6 +65,7 @@ export function createApp({
     torrentsRouter({ client, downloadDir, saved, restore, disk }),
   );
   app.use(settingsRouter({ settings, disk }));
+  app.use(leftoversRouter({ client, downloadDir }));
 
   // Step 3.11: /tv.m3u for VLC on a TV, and /api/tv with its address.
   app.use(tvRouter({ client, lanAddresses }));

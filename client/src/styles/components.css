@@ -237,12 +237,12 @@ h2 {
 
 /* Something still works, such as the sound of a video without its picture. */
 .status-banner[data-tone="warning"] {
-  border-color: var(--color-state-noPeers);
-  color: var(--color-state-noPeers);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
 }
 
 .status-banner[data-tone="warning"]::before {
-  background: var(--color-state-noPeers);
+  background: var(--color-warning);
 }
 
 /* An action such as Retry sits at the end of the line. */
@@ -386,7 +386,7 @@ h2 {
 }
 
 .file-list__tag--warning {
-  color: var(--color-state-noPeers);
+  color: var(--color-warning);
 }
 
 /* Video player */

@@ -12,22 +12,28 @@ browser                                   Node (server/)
 │ client/index.html            │  GET /   │ createApp({ client })         │
 │ client/src/main.ts (bundled  │ ───────▶ │   express.static(public/)     │
 │ by Vite into public/assets/) │          │   GET /api/client (status)    │
-│ add form, live torrent list  │ ◀─ SSE ─ │   /api/torrents (add, list,   │
-└──────────────────────────────┘          │     remove)                   │
-                                          │   /api/torrents/events (SSE)  │
+│ add form, live torrent list, │ ◀─ SSE ─ │   /api/torrents (add, list,   │
+│ player, Watch on TV          │          │     remove, pause, resume)    │
+└──────────────────────────────┘          │   /api/torrents/events (SSE)  │
                                           │   .../files/:index/stream     │
-                                          │     (HTTP Range)              │
+VLC on a TV                               │     (HTTP Range, ?play)       │
+┌──────────────────────────────┐ /tv.m3u  │   .../files/:index/select     │
+│ playlist, then stream URLs   │ ───────▶ │   .../subtitles.vtt           │
+└──────────────────────────────┘          │   /tv.m3u, /api/tv            │
                                           │   404 for everything else     │
                                           │ WebTorrent client (start.ts)  │
                                           │   TCP, uTP, DHT, WebRTC       │
+                                          │ DOWNLOAD_DIR, .torrents/      │
+                                          │   (saved list, Decision #13)  │
                                           └───────────────────────────────┘
 ```
 
 `server/start.ts` creates the client with `createTorrentClient()` from
 `server/torrent-client.ts` and passes it to `createApp()`. The routes in
 `server/torrents-api.ts` add torrents with `addTorrent()` and remove them with
-`removeTorrent()`, which apply Decision #4. The API is listed in the
-[README](README.md#api).
+`removeTorrent()`, which apply Decision #4. `server/tv-playlist.ts` adds the
+TV routes, and `server/saved-torrents.ts` keeps the torrent list across
+restarts. The API is listed in the [README](README.md#api).
 
 ### Adding torrents safely
 
@@ -249,6 +255,7 @@ needs as arguments, so it can be tested in jsdom (see
 | `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24); subtitle track names and the player's stats line |
 | `buffer-health.ts` | Step 3.5, as pure functions: seconds buffered ahead of the playhead from `video.buffered`, the video's average bitrate (file size over duration), and whether the download is too slow to keep up. See [Buffer health](#buffer-health) |
 | `media-error.ts` | The player's messages for each `MediaError` code and for a sound-only video (step 4.2a), as pure functions |
+| `tv-playlist.ts` | The **Watch on TV** section under the list (step 3.11): asks `GET /api/tv` once for the playlist's address, shows it with a Copy button where the page has a clipboard, and hides itself while the player is open or when the server can't answer. See [Watching on a TV](#watching-on-a-tv) |
 | `player-route.ts` | The player's address, `#play/<infoHash>/<index>`. `main.ts` shows the list or the player on `hashchange`, so Back closes the player and a link opens it on another device |
 | `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and, from 4.2a, a message per `MediaError` code naming the file and its container (`media-error.ts`): not supported, can't decode, or cut off with a Retry that reloads the stream and seeks back. A video whose metadata loads with `videoWidth` 0 gets a sound-only warning. Errors and the warning use the status banner's look and stay up through later `playing` events until the next load. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) and, from 3.5, adds the seconds buffered ahead; a separate warning line says when the download is slower than the video ([Buffer health](#buffer-health)) |
 
@@ -260,7 +267,9 @@ which the build erases, so the client and server can't drift apart.
 Decision #27: no framework or component library. The page is small and is
 opened on phones and TV browsers, so it ships plain TypeScript and CSS:
 
-- **Tokens** in `client/src/styles/tokens.css`: colour roles, one colour per
+- **Tokens** in `client/src/styles/tokens.css`: colour roles (including
+  `--color-warning`, for something that still works but needs attention,
+  such as "may not play" or a sound-only video), one colour per
   torrent state (plus `checking`), a 4 px spacing scale, a type scale, radii,
   the focus ring, control height, dot sizes, layout widths, the dialog
   backdrop and the disabled and stale opacities. Nothing else hard-codes a
@@ -285,11 +294,12 @@ opened on phones and TV browsers, so it ships plain TypeScript and CSS:
   It is published to GitHub Pages from `main`; see the
   [README](README.md#component-gallery).
 
-Use these for new UI (4.2 warnings) rather than adding styles. With the 3.4
-player there are nine components and one view switch, still comfortable
-without a framework (Decision #27's check). If the UI outgrows about ten
-components or its state gets awkward, Preact is the smallest step up; the
-tokens carry over.
+Use these for new UI rather than adding styles. By 3.11 the gallery shows
+twelve component groups (the nine above, plus the add form, torrent list and
+Watch on TV), past Decision #27's "about ten", and the custom player controls
+(3.6 to 3.9) add about six more with their own state. So step 3.5a moves the
+components to Preact before 3.6. The tokens, `components.css` and its class
+names, the gallery registry and the rules above stay as they are.
 
 ## Target design
 
@@ -675,11 +685,11 @@ design stays next to the code.
 | 10 | Native modules without prebuilt binaries | Decided | Support Linux x64, macOS, Windows and Raspberry Pi. 2.6 adds a startup check: without `utp-native` the client logs that it is TCP-only; if `node-datachannel` fails to load it runs without WebRTC instead of crashing. The README lists the build tools needed on ARM |
 | 11 | Torrents make the server contact hosts the adder chose | Decided | Strip a magnet's `xs=` URL before `client.add()`. Drop tracker and web seed URLs that aren't http(s)/udp/wss or whose host is localhost or a literal loopback, private, link-local or unspecified IP. Hostnames that resolve to LAN addresses still pass. Implemented in 2.6, before 2.5. See [Network exposure](#network-exposure) |
 | 12 | No authentication on the torrent API | Decided | Accepted for a home LAN, as in [Network exposure](#network-exposure). Anyone on the LAN can add and remove torrents; 4.3 limits disk use |
-| 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent to `DOWNLOAD_DIR/.torrents/<infoHash>.torrent` (the magnet until metadata arrives), delete it on removal, re-add them all at startup, then delete files no saved torrent owns. Saving and restoring, with the selection and paused state, implemented in 4.3a (split from 4.3); shutdown no longer deletes downloads. Deleting unowned files stays in 4.3. See [Restoring torrents after a restart](#restoring-torrents-after-a-restart) |
+| 13 | Torrent list is in memory only | Decided | Restore on startup: save each torrent in `DOWNLOAD_DIR/.torrents` as `<infoHash>.json` (when added, its filtered magnet link, paused state and selected files) plus `<infoHash>.torrent` once its metadata is known, delete both on removal or failure, and add them all again at startup. Implemented in 4.3a (split from 4.3); shutdown no longer deletes downloads. Deleting files no saved torrent owns stays in 4.3. See [Restoring torrents after a restart](#restoring-torrents-after-a-restart) |
 | 14 | API input limits | Decided | Only v1 magnets (`urn:btih:`) and uploaded `.torrent` files up to 10 MiB. No v2-only magnets, no `.torrent` URLs, no multipart uploads. See [Adding torrents safely](#adding-torrents-safely) |
 | 15 | Magnet metadata can stay pending forever | Decided | Show it, never give up automatically. A torrent with no connected peer after WebTorrent's 30-second `noPeers` check reports state `noPeers` and keeps searching; the user removes it. DHT and tracker lookups can take minutes and a rare torrent's seeder may come back later, and giving up would delete partial data. See [State and events](#state-and-events) |
 | 16 | File paths from a hostile `.torrent` | Decided | Safe as is: `parse-torrent` joins each path from the root and strips it, so `../../etc/x` becomes `etc/x` and files stay inside `DOWNLOAD_DIR`. Checked in 2.3. See [Metadata](#metadata) |
-| 17 | Media classification is by extension only | Decided | The browser decides: the player reports the `<video>` error with the file name and container (done in 4.2a). If `ffprobe` is installed, the server also probes codecs through the stream URL (only the header pieces are fetched) so the UI can warn before playing; it stays optional. Extension-only classification remains the first guess |
+| 17 | Media classification is by extension only | Decided | The browser decides: the player reports the `<video>` error with the file name and container (done in 4.2a). In 4.2b, if `ffprobe` is installed, the server will also probe codecs through the stream URL (only the header pieces are fetched) so the UI can warn before playing; it stays optional. Extension-only classification remains the first guess |
 | 18 | Whole torrent is downloaded, not just the chosen file | Decided | Download the chosen video and its subtitles only: add torrents with `deselect: true`, then select `mainFile` and its subtitles; picking another video selects it too. Streaming still fetches any range played. Implemented in 3.3 |
 | 19 | Main-file heuristics are unproven | Decided | Accepted for now: a sample is under 25% of the largest video, main-sized is at least a third. `.ts` (MPEG-TS) also matches TypeScript sources, and video inside `.rar`/`.zip` isn't found. Revisit after the manual tests with real torrents. See [Choosing the media file](#choosing-the-media-file) |
 | 20 | Subtitles need work before playback | Decided | Serve `.vtt` as is and convert `.srt` to WebVTT on the server (UTF-8, falling back to Windows-1252). Match subtitles to a video by file name with an optional language code (`Sintel.en.srt` → `Sintel.mp4`, `en`). No `.ass`/`.ssa` or embedded MKV subtitles in M4. Implemented in 3.4: `GET .../files/:index/subtitles.vtt` (`server/subtitles.ts`) serves them, files above 2 MiB get `413`, and the player adds one `<track>` per match |
@@ -689,8 +699,12 @@ design stays next to the code.
 | 24 | State timing | Decided | Accepted: a new torrent shows `connecting` for about 30 s before `noPeers` (WebTorrent's fixed check interval), and verifying existing data also shows as `connecting`; the UI can tell that apart with `hasMetadata && !ready` |
 | 25 | Tracker peer addresses garbled by `bittorrent-tracker` | Decided | Found in the 2.6 real-swarm check. Worked around in our code: `addTorrent()` repairs the addresses before WebTorrent tries them. Remove once fixed upstream. See [Creating the client](#creating-the-client) |
 | 26 | uTP is tried first and TCP only after about 41 s | Decided | Accepted: keep uTP on. It only slows peers down where UDP is blocked, and the DHT fails there too. Revisit (uTP off by default, `UTP=1` to turn it on, a startup warning when the DHT finds no nodes) if users report `noPeers` on such networks |
-| 27 | UI design system and component library | Decided | Our own: design tokens as CSS custom properties and about eight components on native HTML, no framework or component library. Nothing to install or load on TV browsers, and simple jsdom tests. Revisit in 3.4 if the UI passes about ten components; Preact would be the smallest step. See [Design system](#design-system) |
+| 27 | UI design system and component library | Decided | Our own design system: design tokens as CSS custom properties (#29, #30) and components on native HTML, no component library. Plain TypeScript render functions until the UI passed about ten components; revisited 30 Oct 26 with twelve and the custom controls to come, and the owner chose Preact, the smallest step up (step 3.5a, before 3.6). See [Design system](#design-system) |
 | 28 | DHT found no nodes on a host with IPv6 | Decided | Found when a trackerless magnet got no peers on the owner's Mac. `createTorrentClient()` makes DNS lookups prefer IPv4 for the whole process and bootstraps the DHT from a wider router list including `dht.libtorrent.org:25401`. Remove the DNS setting once `k-rpc-socket` looks up IPv4 itself. See [Creating the client](#creating-the-client) |
 | 29 | Design tokens are not the only source of colours and sizes | Decided | Found in the 23 Oct 26 frontend review: `components.css` hard-coded ten colours, lengths and opacities. They are tokens now, and a test fails on any colour, length or opacity literal in `components.css`. Step 2.7. See [Design system](#design-system) |
 | 30 | Dark mode can only follow the OS setting | Decided | `data-theme="light"` or `"dark"` on `<html>` forces a theme; without it `prefers-color-scheme` decides. Plain duplicated dark values rather than CSS `light-dark()`, which older TV browsers lack. Step 2.7 |
+| 31 | Replace the native `<video>` controls with our own | Decided | Needed for Feature Idea F01's downloaded-pieces map: browsers don't let the native seek bar be styled or extended. Full parity with the native controls, native HTML first (`<button>`, `<input type=range>`), features a browser lacks hidden, iPhone fullscreen falls back to native controls. 3.10 checks parity on every target browser and screen reader, and a way back to native controls stays until then. Steps 3.6 to 3.10 |
 | 32 | How VLC on a TV finds the videos | Decided | `GET /tv.m3u`, an M3U playlist of every video (samples left out) with absolute stream URLs on the host the TV fetched it from, or the LAN address when that is `localhost`. URLs carry `?play`, which selects the video and resumes a paused torrent like Play in the page. No subtitles: VLC reads a playlist's `sub-file` as a local path and refuses `input-slave`. Step 3.11. See [Watching on a TV](#watching-on-a-tv) |
+| 33 | What to build next, given the owner watches in VLC | Decided | The custom controls (3.6 to 3.10) and the pre-play codec warning (4.2b) only help in a browser, so they wait (Priority Low; #31 stands). Next: DLNA browsing (3.12), the disk limit (4.3), then M6, packaging and discovery (5.1, 5.2) |
+| 34 | A dropped `x.pe` peer is never dialled again | Decided | Accepted: WebTorrent adds a magnet's `x.pe=` peers once, so a torrent whose only peer was dropped after 30 s of silence stays at 0 peers until it is added again. Only local test setups have a single `x.pe` peer as their only source; the DHT and trackers find peers again in a real swarm. See [Buffer health](#buffer-health) |
+| 35 | Removing a torrent leaves its empty folder | Open | Found in 4.3a: destroying the store deletes the files but not a multi-file torrent's top folder. 4.3's cleanup of files no saved torrent owns should remove empty folders too |

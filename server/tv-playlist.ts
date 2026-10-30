@@ -22,12 +22,17 @@ export interface TvRouterOptions {
   client: WebTorrent;
   // Passed in so tests don't depend on the machine's interfaces.
   lanAddresses?: () => string[];
+  // The DLNA server's name in VLC's Local network list (3.12), if it is on.
+  dlnaName?: string;
 }
 
 // What GET /api/tv answers: the playlist's address on each LAN address, the
 // one to save in VLC first.
 export interface TvInfo {
   playlistUrls: string[];
+  // The server's name under VLC's Browse > Local network, or null with DLNA
+  // off (step 3.12).
+  dlnaName: string | null;
 }
 
 // An M3U playlist as VLC reads it: #EXTINF names each entry. A title is one
@@ -40,29 +45,44 @@ export function m3u(entries: readonly PlaylistEntry[]): string {
   return `${lines.join('\n')}\n`;
 }
 
-function withoutExtension(name: string): string {
+export function withoutExtension(name: string): string {
   const dot = name.lastIndexOf('.');
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+// The videos a TV lists for a torrent, in the order the page lists them,
+// samples left out. Empty until the file list is known. Shared with the DLNA
+// server (3.12), so VLC's folders match the playlist.
+export function tvVideos(torrent: Torrent): number[] {
+  if (torrent.metadata == null) return [];
+  const { files, videos } = selectMedia(mediaInputs(torrent));
+  return videos.filter((index) => !files[index].sample);
+}
+
+export function streamUrl(
+  origin: string,
+  torrent: Torrent,
+  index: number,
+): string {
+  return `${origin}/api/torrents/${torrent.infoHash}/files/${index}/stream?play`;
+}
+
 // Every video of every torrent whose file list is known, in the order the
-// torrents were added and then the page lists their videos. Samples are left
-// out. A torrent with one video is named after the torrent; with several,
-// each is named after its file, e.g. one per episode.
+// torrents were added and then the page lists their videos. A torrent with
+// one video is named after the torrent; with several, each is named after its
+// file, e.g. one per episode.
 export function playlistEntries(
   torrents: readonly Torrent[],
   origin: string,
 ): PlaylistEntry[] {
   return torrents.flatMap((torrent) => {
-    if (torrent.metadata == null) return [];
-    const { files, videos } = selectMedia(mediaInputs(torrent));
-    const listed = videos.filter((index) => !files[index].sample);
+    const listed = tvVideos(torrent);
     return listed.map((index) => ({
       title:
         listed.length === 1
           ? torrent.name
-          : withoutExtension(files[index].name),
-      url: `${origin}/api/torrents/${torrent.infoHash}/files/${index}/stream?play`,
+          : withoutExtension(torrent.files[index].name),
+      url: streamUrl(origin, torrent, index),
     }));
   });
 }
@@ -100,6 +120,7 @@ export function lanOrigins(req: Request, lanAddresses: string[]): string[] {
 export function tvRouter({
   client,
   lanAddresses = systemLanAddresses,
+  dlnaName,
 }: TvRouterOptions): Router {
   const router = Router();
 
@@ -121,6 +142,7 @@ export function tvRouter({
       playlistUrls: lanOrigins(req, lanAddresses()).map(
         (origin) => `${origin}${TV_PLAYLIST_PATH}`,
       ),
+      dlnaName: dlnaName ?? null,
     } satisfies TvInfo);
   });
 

@@ -34,6 +34,7 @@ over TCP, uTP and WebRTC. It is configured with environment variables:
 | `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
 | `DHT_PORT`     | `6882`        | UDP port for the DHT. `0` picks a random port |
 | `PORT_MAPPING` | `0`           | `1` lets the client ask your router to forward the peer port (UPnP and NAT-PMP) |
+| `DLNA`         | `1`           | `0` turns off the DLNA server that lists the torrents in VLC's Local network (UDP `1900`). It is also off when `HOST` is `127.0.0.1` |
 
 The startup log shows the peer port, which kinds of peers the client can use
 and where downloads go. `GET /api/client` also returns the peer port.
@@ -110,14 +111,24 @@ which adds it again.
 
 ### Watching on a TV with VLC
 
-Below the torrent list, **Watch on TV** shows an address like
-`http://192.168.1.20:1234/tv.m3u`. In VLC on the TV (a Fire Stick, Android
-TV, or VLC on any computer), choose **Stream** (**Network Stream** in some
-versions), enter that address and save it as a favourite. It is a playlist of
-every video in the list, by name, so after that you only pick from it. VLC
-fetches it again each time, so new torrents show up, and it plays formats
-browsers often can't (MKV, HEVC, AC-3). Seeking works, and opening a video
-downloads it and resumes its torrent, like Play in the page. Subtitles aren't
+The server is also a DLNA media server, which VLC on a TV (a Fire Stick,
+Android TV, or VLC on any computer) finds by itself. In VLC, open
+**Browse**, then **Local network**, then **stream on** followed by the
+computer's name (**Watch on TV** below the torrent list shows the exact
+name). Each torrent is a folder of its videos, samples left out, and a
+video's matching subtitles are in VLC's subtitles menu (VLC doesn't turn them
+on by itself). Opening a video downloads it and resumes its torrent, like
+Play in the page. The TV must be on the same network as the computer; set
+`DLNA=0` to turn this off.
+
+If the server isn't listed there (some routers block the multicast it uses),
+**Watch on TV** also shows a playlist address like
+`http://192.168.1.20:1234/tv.m3u`. In VLC choose **Stream** (**Network
+Stream** in some versions), enter that address and save it as a favourite.
+It is a playlist of every video in the list, by name, so after that you only
+pick from it. VLC fetches it again each time, so new torrents show up, and it
+plays formats browsers often can't (MKV, HEVC, AC-3). Seeking works, and
+opening a video downloads it and resumes its torrent. Subtitles aren't
 included: VLC can't load them from a playlist. The address uses the
 computer's LAN address even when the page is open on `localhost`; if it
 lists several, try the next one when the TV can't connect.
@@ -145,7 +156,8 @@ The page uses this API, and scripts can too:
 | `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files, or clear a failed one. `204`, or `404` if it isn't there |
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
 | `GET /tv.m3u` | An M3U playlist for VLC: every video of every torrent with a file list, samples left out, each with an absolute `...stream?play` URL. Named after the torrent, or after the file when a torrent has several videos. URLs use the host the playlist was fetched on, or the LAN address when that is `localhost`. `Cache-Control: no-store` |
-| `GET /api/tv` | `{"playlistUrls": [...]}`: the playlist's address as another device would use it, one per LAN address (or the page's own host when it isn't `localhost`); empty with no network |
+| `GET /api/tv` | `{"playlistUrls": [...], "dlnaName": "..."}`: the playlist's address as another device would use it, one per LAN address (or the page's own host when it isn't `localhost`), empty with no network; and the DLNA server's name, or `null` when it is off |
+| `GET /dlna/device.xml` | The DLNA (UPnP MediaServer) device description that SSDP points players to. With `/dlna/ContentDirectory.xml`, `/dlna/ConnectionManager.xml` and SOAP control at `POST /dlna/control/...`; see [ARCHITECTURE.md](ARCHITECTURE.md#browsing-in-vlc-dlna) |
 
 Errors are JSON: `{"error": "..."}`.
 
@@ -236,13 +248,15 @@ server/magnet.ts          magnet link validation
 server/torrent-sources.ts drops trackers, web seeds and xs= URLs on local addresses
 server/media.ts           classifies a torrent's files and picks the one to play
 server/tv-playlist.ts     /tv.m3u playlist for VLC on a TV, and /api/tv
-server/network.ts         the machine's LAN addresses
+server/dlna.ts            DLNA media server: device description, ContentDirectory Browse
+server/ssdp.ts            SSDP: announces the DLNA server and answers searches on UDP 1900
+server/network.ts         the machine's LAN addresses and interfaces
 client/src/main.ts        page entry point: wires the modules below together
 client/src/api.ts         typed client for /api/torrents
 client/src/live-updates.ts  the page's one event stream (Decision #21)
 client/src/torrent-form.ts  add a magnet link or .torrent file
 client/src/torrent-list.ts  the live torrent list and its file lists
-client/src/tv-playlist.ts   Watch on TV: the playlist address for VLC
+client/src/tv-playlist.ts   Watch on TV: the DLNA server's name and the playlist address for VLC
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)

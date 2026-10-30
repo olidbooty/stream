@@ -608,7 +608,63 @@ stream URL, but typing one with a remote isn't practical, so `GET /tv.m3u`
   `#EXTVLCOPT:sub-file=` is read as a local path, so an `http://` subtitles
   URL fails to open, and `#EXTVLCOPT:input-slave=` is refused as an unsafe
   option. VLC for Android uses the same core. Subtitles on the TV would need
-  them muxed into the stream with ffmpeg (4.4).
+  them muxed into the stream with ffmpeg (4.4). The DLNA server (3.12, below)
+  can carry them.
+
+### Browsing in VLC (DLNA)
+
+Step 3.12 (Decision #33). The 3.11 playlist is one flat list and needs an
+address typed in once. VLC's **Browse > Local network** finds UPnP media
+servers by itself, so the server is one, and each torrent shows as a folder.
+Written by hand on Express and `node:dgram` (`server/dlna.ts`,
+`server/ssdp.ts`) rather than with a library: browsing needs only a small
+part of UPnP, and it adds no dependency. VLC 3's `upnp` module
+(`modules/services_discovery/upnp.cpp`) was read to see what it needs.
+
+- **Discovery (SSDP).** `SsdpServer` binds UDP `1900` (with `reuseAddr`, so
+  another media server on the machine can share it), joins the multicast
+  group `239.255.255.250` on each LAN interface, and multicasts `NOTIFY
+  ssdp:alive` for the root device, its UDN, `MediaServer:1`,
+  `ContentDirectory:1` and `ConnectionManager:1` at startup and every 10
+  minutes (`max-age` 1800), twice each since UDP can drop one. It answers an
+  `M-SEARCH` for any of those, or `ssdp:all`, within a second, with a
+  `LOCATION` on the interface the search came in on. Shutdown sends
+  `ssdp:byebye`, so VLC drops the server at once. If the port can't be bound
+  the server logs `DLNA off` and runs on.
+- **Description.** `GET /dlna/device.xml` names the server "stream on" and the
+  host name, with a UDN derived from the host name and HTTP port, so it
+  stays the same across restarts: VLC ignores a second server with a UDN it
+  already lists, and a player that remembers a server finds it again. The two
+  services' SCPDs are fixed XML.
+- **Browse.** `POST /dlna/control/ContentDirectory` handles the SOAP actions
+  players use: `Browse`, `GetSystemUpdateID`, `GetSearchCapabilities` and
+  `GetSortCapabilities`. ObjectID `0` is the root, holding one
+  `storageFolder` per torrent that has a video to list; a folder's ID is the
+  info hash and holds its videos (`<infoHash>/<index>`), in the same order as
+  the playlist with samples left out (`tvVideos()` in
+  `server/tv-playlist.ts`). Each video's resource is the 3.11 stream URL with
+  `?play` on the host the player used, with `protocolInfo`
+  `http-get:*:<type>:DLNA.ORG_OP=01` (byte seeking). VLC only lists a video
+  whose type starts with `video/`, so a container the MIME table doesn't know
+  gets `video/x-<extension>`. `StartingIndex` and `RequestedCount` page the
+  children; sort and search aren't supported. `SystemUpdateID` goes up when
+  the folders or their videos change. The arguments are read with a small
+  regular expression, since they are flat text elements, so there is no XML
+  parser to configure; everything written out is escaped, and characters XML
+  can't hold are dropped from torrent and file names.
+- **Subtitles.** Unlike a playlist, a DIDL-Lite item can carry them: each
+  matching subtitle (Decision #20) is a second `res` with `text/vtt`, the
+  3.4 WebVTT route, and the first is also `sec:CaptionInfoEx` for Samsung
+  TVs. VLC 3.0.20 adds each as a subtitle track, off until picked in its
+  subtitles menu.
+- **ConnectionManager** answers `GetProtocolInfo` and reports no
+  connections. `SUBSCRIBE` to either service gets a SID but no events are
+  sent: VLC doesn't subscribe, and players browse again when a folder opens.
+- **Off.** `DLNA=0` turns it off, and so does a `HOST` other than `0.0.0.0`
+  or one of the LAN addresses, since players couldn't reach the HTTP port.
+  With `HOST` set to a LAN address, SSDP only uses that interface.
+- **Not done.** No `contentFeatures.dlna.org` headers on the stream route,
+  which strict DLNA TVs ask for, and no icon or durations. VLC needs neither.
 
 ### Seeding
 
@@ -628,6 +684,13 @@ The peer port (`TORRENT_PORT`, TCP and uTP) and `DHT_PORT` always listen on
 all interfaces (Decision #8). WebTorrent would also ask the router to forward
 the peer port with UPnP/NAT-PMP; that is off unless `PORT_MAPPING=1`
 (Decision #7).
+
+The DLNA server (Decision #33) listens on UDP `1900` on all interfaces, as
+SSDP requires, but only answers searches from addresses on one of the
+machine's LAN networks, and only announces itself on those, with a multicast
+TTL of 2. Its answers are a few hundred bytes, unicast to the asker. It
+lists every torrent's videos to anyone on the LAN, which the page already
+does. Never forward UDP `1900` on the router.
 
 `/api/torrents` has no authentication (Decision #12). A torrent also makes
 the server contact hosts its adder chose: trackers (`tr=`, `announce`), web
@@ -694,3 +757,4 @@ design stays next to the code.
 | 29 | Design tokens are not the only source of colours and sizes | Decided | Found in the 23 Oct 26 frontend review: `components.css` hard-coded ten colours, lengths and opacities. They are tokens now, and a test fails on any colour, length or opacity literal in `components.css`. Step 2.7. See [Design system](#design-system) |
 | 30 | Dark mode can only follow the OS setting | Decided | `data-theme="light"` or `"dark"` on `<html>` forces a theme; without it `prefers-color-scheme` decides. Plain duplicated dark values rather than CSS `light-dark()`, which older TV browsers lack. Step 2.7 |
 | 32 | How VLC on a TV finds the videos | Decided | `GET /tv.m3u`, an M3U playlist of every video (samples left out) with absolute stream URLs on the host the TV fetched it from, or the LAN address when that is `localhost`. URLs carry `?play`, which selects the video and resumes a paused torrent like Play in the page. No subtitles: VLC reads a playlist's `sub-file` as a local path and refuses `input-slave`. Step 3.11. See [Watching on a TV](#watching-on-a-tv) |
+| 33 | DLNA server for browsing in VLC | Decided | Hand-written UPnP MediaServer on Express and `node:dgram`, on by default (`DLNA=0` turns it off, and it is off when `HOST` keeps the HTTP port local). One folder per torrent of its videos, same order as the playlist, with `?play` stream URLs and matching subtitles as `text/vtt` resources, which VLC lists as subtitle tracks. SSDP on UDP 1900 only answers and announces on LAN networks. The playlist stays as the fallback. Step 3.12. See [Browsing in VLC (DLNA)](#browsing-in-vlc-dlna) |

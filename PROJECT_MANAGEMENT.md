@@ -76,7 +76,7 @@ depends on it moves earlier or later to match.
 | M1 - Setup: project skeleton | 1.1–1.3 | npm workspace, Express and WebTorrent, static file server |
 | M2 - Setup: frontend, network & testing | 1.4–1.10 | Vite, LAN access, Vitest, smoke tests, WebTorrent mock, TypeScript migration |
 | M3 - WebTorrent on the server | 2.1–2.7 | Node WebTorrent client, torrent API, metadata, live swarm state, frontend, peer connectivity, component gallery |
-| M4 - Playback | 3.1–3.11 | Picking the media file, HTTP range streaming, piece prioritisation, `<video>` playback, buffer health, custom player controls, a VLC playlist for the TV |
+| M4 - Playback | 3.1–3.12 | Picking the media file, HTTP range streaming, piece prioritisation, `<video>` playback, buffer health, custom player controls, a VLC playlist and DLNA browsing for the TV |
 | M5 - Codecs & storage hardening | 4.1–4.5 | Codec audit, unsupported-format errors, disk limits and cleanup, optional native ffmpeg and Playwright e2e |
 
 The Dashboard shows live progress for each milestone.

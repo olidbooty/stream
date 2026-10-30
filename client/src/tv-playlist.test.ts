@@ -9,10 +9,13 @@ afterEach(() => {
 });
 
 function setUp(
-  getTv: () => Promise<{ playlistUrls: string[] }>,
+  getTv: () => Promise<{ playlistUrls: string[]; dlnaName?: string | null }>,
   clipboard?: Pick<Clipboard, 'writeText'>,
 ) {
-  const tv = tvPlaylist({ api: { getTv }, clipboard });
+  const tv = tvPlaylist({
+    api: { getTv: async () => ({ dlnaName: null, ...(await getTv()) }) },
+    clipboard,
+  });
   document.body.append(tv.element);
   return tv;
 }
@@ -34,6 +37,31 @@ describe('tvPlaylist', () => {
     expect(tv.element.hidden).toBe(false);
     expect(tv.element.querySelector('code')?.textContent).toBe(URL_A);
     expect(visibleText(tv.element)).not.toContain('try');
+  });
+
+  it('says where VLC lists the DLNA server, with the playlist after it', async () => {
+    const tv = setUp(async () => ({
+      playlistUrls: [URL_A],
+      dlnaName: 'stream on studio',
+    }));
+
+    await tv.load();
+
+    const text = visibleText(tv.element);
+    expect(text).toContain(
+      'In VLC on your TV, open Browse, then Local network, then “stream on studio”.',
+    );
+    expect(text).toContain('Or, if it isn’t listed there, choose Stream');
+  });
+
+  it('only offers the playlist with DLNA off', async () => {
+    const tv = setUp(async () => ({ playlistUrls: [URL_A] }));
+
+    await tv.load();
+
+    const text = visibleText(tv.element);
+    expect(text).not.toContain('Local network');
+    expect(text).toContain('In VLC on your TV, choose Stream');
   });
 
   it('offers the other addresses after the first', async () => {

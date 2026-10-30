@@ -106,6 +106,14 @@ jsdom lacks three browser APIs the page uses:
   (`client/src/buffer-health.ts`).
   Real playback, seeking and subtitles are checked by hand in a browser.
 
+The DLNA server's XML (`didl()`, `soapArgs()`, the SSDP messages) is pure
+and tested on its own; its routes are driven with supertest and SOAP bodies
+in `server/dlna.test.ts`. `SsdpServer` takes a `createSocket` function, so
+`server/ssdp.test.ts` passes a fake UDP socket that records what is sent on
+which interface, delivers searches from chosen addresses, or fails to bind,
+with `vi.useFakeTimers()` for the reply delay and the 10-minute
+announcements. No test opens port 1900.
+
 Pure functions such as `isMagnetURI()` (`server/magnet.ts`),
 `selectMedia()` (`server/media.ts`) and `filterSources()`
 (`server/torrent-sources.ts`) need no DOM or fake client at all; prefer them
@@ -265,6 +273,18 @@ hand:
    should resume it. Without a TV, `cvlc --play-and-exit -vv <address>`
    (VLC refuses to run as root) logs each entry's name and its `Range`
    requests.
+
+9. For DLNA browsing (step 3.12), open VLC on the TV, then Browse, Local
+   network: "stream on" and the computer's name should be listed, each
+   torrent a folder of its videos, and a video with subtitles should offer
+   them in VLC's subtitles menu. Check that only opening a video, not
+   browsing a folder, selects it in the page. Without a TV, `cvlc -vv
+   --services-discovery=upnp` logs `Adding server 'stream on ...'`, and
+   `cvlc -vv --play-and-exit --run-time=3 --sub-track=0
+   "upnp://http://<LAN address>:1234/dlna/control/ContentDirectory?ObjectID=0"`
+   browses the folders, plays each video and loads its subtitles. Stopping the
+   server sends `ssdp:byebye`; a script that joins `239.255.255.250:1900`
+   shows the announcements.
 
 Real peer tests use your network and upload to the swarm (see
 [ARCHITECTURE.md](ARCHITECTURE.md#seeding)). Remove test torrents afterwards

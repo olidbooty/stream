@@ -33,7 +33,10 @@ describe('createApi', () => {
 
   it('gets the TV playlist addresses', async () => {
     const fetch = stub(
-      respond(200, { playlistUrls: ['http://192.168.1.20:1234/tv.m3u'] }),
+      respond(200, {
+        playlistUrls: ['http://192.168.1.20:1234/tv.m3u'],
+        dlnaName: null,
+      }),
     );
     const tv = await createApi(fetch).getTv();
     expect(fetch).toHaveBeenCalledWith('/api/tv', undefined);

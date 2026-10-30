@@ -200,12 +200,15 @@ function list(torrents: TorrentSummary[], stale = false): HTMLElement {
   return l.element;
 }
 
-function tv(playlistUrls: string[]): HTMLElement {
+function tv(
+  playlistUrls: string[],
+  dlnaName: string | null = null,
+): HTMLElement {
   const t = tvPlaylist({
-    api: { getTv: async () => ({ playlistUrls }) },
+    api: { getTv: async () => ({ playlistUrls, dlnaName }) },
     clipboard: { writeText: async () => {} },
   });
-  t.update(playlistUrls);
+  t.update(playlistUrls, dlnaName);
   return t.element;
 }
 
@@ -459,7 +462,12 @@ export const entries: GalleryEntry[] = [
   },
   {
     component: 'Watch on TV',
-    state: 'one address',
+    state: 'DLNA on',
+    render: () => tv(['http://192.168.1.20:1234/tv.m3u'], 'stream on studio'),
+  },
+  {
+    component: 'Watch on TV',
+    state: 'one address, DLNA off',
     render: () => tv(['http://192.168.1.20:1234/tv.m3u']),
   },
   {

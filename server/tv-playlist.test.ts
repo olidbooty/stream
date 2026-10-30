@@ -175,6 +175,25 @@ describe('TV playlist routes', () => {
 
     expect(res.body).toEqual({
       playlistUrls: ['http://192.168.1.20:1234/tv.m3u'],
+      dlnaName: null,
     });
+  });
+
+  it('gives the DLNA server’s name when it is on', async () => {
+    const withDlna = createApp({
+      client: client as unknown as WebTorrent,
+      downloadDir: join(tmpdir(), 'stream-tv-test'),
+      lanAddresses: () => addresses,
+      dlna: {
+        uuid: '4f7ad604-67ef-5958-a706-c60b14eadd08',
+        name: 'stream on studio',
+      },
+    });
+
+    const res = await request(withDlna)
+      .get('/api/tv')
+      .set('Host', '192.168.1.20:1234');
+
+    expect(res.body.dlnaName).toBe('stream on studio');
   });
 });

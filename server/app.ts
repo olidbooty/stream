@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
+import { type DeviceInfo, dlnaRouter } from './dlna.js';
 import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
 import { torrentsRouter } from './torrents-api.js';
 import { tvRouter } from './tv-playlist.js';
@@ -20,6 +21,8 @@ export interface AppOptions {
   restore?: readonly SavedTorrent[];
   // The machine's LAN addresses, for the TV playlist; tests pass their own.
   lanAddresses?: () => string[];
+  // Step 3.12: the DLNA server's name and UDN, or none to leave it off.
+  dlna?: DeviceInfo;
 }
 
 // Build the Express app without binding a port, so tests can drive it with supertest.
@@ -30,6 +33,7 @@ export function createApp({
   saved,
   restore,
   lanAddresses,
+  dlna,
 }: AppOptions): Express {
   const app = express();
 
@@ -54,7 +58,10 @@ export function createApp({
   );
 
   // Step 3.11: /tv.m3u for VLC on a TV, and /api/tv with its address.
-  app.use(tvRouter({ client, lanAddresses }));
+  app.use(tvRouter({ client, lanAddresses, dlnaName: dlna?.name }));
+
+  // Step 3.12: VLC's Browse > Local network lists each torrent as a folder.
+  if (dlna) app.use(dlnaRouter({ client, device: dlna, lanAddresses }));
 
   app.use((_req, res) => {
     res.status(404).type('text/plain').send('Not Found');

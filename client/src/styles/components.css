@@ -220,14 +220,15 @@ h2 {
 
 /* Status banner: the live-updates error indicator */
 .status-banner {
+  --banner-color: var(--color-state-error);
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid var(--color-state-error);
+  border: var(--border-width) solid var(--banner-color);
   border-radius: var(--radius-md);
-  color: var(--color-state-error);
+  color: var(--banner-color);
 }
 
 .status-banner::before {
@@ -236,17 +237,12 @@ h2 {
   width: var(--dot-md);
   height: var(--dot-md);
   border-radius: 50%;
-  background: var(--color-state-error);
+  background: var(--banner-color);
 }
 
 /* Something still works, such as the sound of a video without its picture. */
 .status-banner[data-tone="warning"] {
-  border-color: var(--color-state-noPeers);
-  color: var(--color-state-noPeers);
-}
-
-.status-banner[data-tone="warning"]::before {
-  background: var(--color-state-noPeers);
+  --banner-color: var(--color-warning);
 }
 
 /* An action such as Retry sits at the end of the line. */
@@ -390,7 +386,7 @@ h2 {
 }
 
 .file-list__tag--warning {
-  color: var(--color-state-noPeers);
+  color: var(--color-warning);
 }
 
 /* Video player */

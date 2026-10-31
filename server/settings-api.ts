@@ -47,7 +47,7 @@ export function settingsRouter({
     if (!next) {
       return res.status(400).json({
         error:
-          'diskLimit must be a whole number of bytes above 0, or null for no limit',
+          'diskLimit must be a whole number of bytes above 0, or null, and diskLimitOn true or false; the limit can only be on with a number',
       });
     }
     await settings.set(next);

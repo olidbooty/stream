@@ -11,8 +11,22 @@ export const SETTINGS_FILE = '.settings.json';
 export const GB = 1_000_000_000;
 
 export interface Settings {
-  // Most bytes the torrents may keep in DOWNLOAD_DIR; null for no limit.
+  // Whether the disk limit applies. Kept apart from the number, so turning
+  // the limit off and on again keeps it.
+  diskLimitOn: boolean;
+  // Most bytes the torrents may keep in DOWNLOAD_DIR while the limit is on;
+  // null if none was ever set.
   diskLimit: number | null;
+}
+
+export const NO_SETTINGS: Settings = { diskLimitOn: false, diskLimit: null };
+
+// The limit DiskLimit enforces: the number while it is on, otherwise none.
+export function activeDiskLimit({
+  diskLimitOn,
+  diskLimit,
+}: Settings): number | null {
+  return diskLimitOn ? diskLimit : null;
 }
 
 export type SettingsEnv = Partial<Record<'DISK_LIMIT_GB', string>>;
@@ -21,7 +35,7 @@ export type SettingsEnv = Partial<Record<'DISK_LIMIT_GB', string>>;
 export function defaultSettings(env: SettingsEnv = process.env): Settings {
   const value = env.DISK_LIMIT_GB;
   if (value === undefined || value === '' || value === '0') {
-    return { diskLimit: null };
+    return NO_SETTINGS;
   }
   const gb = Number(value);
   if (!Number.isFinite(gb) || gb <= 0) {
@@ -29,7 +43,7 @@ export function defaultSettings(env: SettingsEnv = process.env): Settings {
       `DISK_LIMIT_GB must be a number of gigabytes above 0, got "${value}"`,
     );
   }
-  return { diskLimit: Math.round(gb * GB) };
+  return { diskLimitOn: true, diskLimit: Math.round(gb * GB) };
 }
 
 function isDiskLimit(value: unknown): value is Settings['diskLimit'] {
@@ -37,7 +51,10 @@ function isDiskLimit(value: unknown): value is Settings['diskLimit'] {
 }
 
 // Checks a PUT body or the saved file: each known key must be valid, and keys
-// left out keep their current value. Returns null if anything is wrong.
+// left out keep their current value. Returns null if anything is wrong,
+// including turning the limit on with no number. A diskLimit sent without
+// diskLimitOn, as before the checkbox, turns the limit on for a number and
+// off for null.
 export function parseSettings(
   value: unknown,
   current: Settings,
@@ -45,9 +62,22 @@ export function parseSettings(
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
   }
-  const { diskLimit = current.diskLimit } = value as Record<string, unknown>;
+  const fields = value as Record<string, unknown>;
+  const diskLimit =
+    'diskLimit' in fields ? fields.diskLimit : current.diskLimit;
   if (!isDiskLimit(diskLimit)) return null;
-  return { diskLimit };
+  let diskLimitOn: unknown = fields.diskLimitOn;
+  if (diskLimitOn === undefined) {
+    diskLimitOn =
+      'diskLimit' in fields ? diskLimit !== null : current.diskLimitOn;
+  }
+  if (typeof diskLimitOn !== 'boolean') return null;
+  if (diskLimitOn && diskLimit === null) return null;
+  // Turning it off with null keeps the number for when it is turned on.
+  return {
+    diskLimitOn,
+    diskLimit: diskLimit ?? (diskLimitOn ? null : current.diskLimit),
+  };
 }
 
 // Saves are queued, so two quick changes land in the order they were made.
@@ -56,7 +86,7 @@ export class SettingsStore {
   private current: Settings;
   private pending: Promise<void> = Promise.resolve();
 
-  constructor(downloadDir: string, defaults: Settings = { diskLimit: null }) {
+  constructor(downloadDir: string, defaults: Settings = NO_SETTINGS) {
     this.path = join(downloadDir, SETTINGS_FILE);
     this.current = defaults;
   }

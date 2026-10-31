@@ -13,6 +13,7 @@ import {
 
 const GB = 1_000_000_000;
 const UNDER: SettingsInfo = {
+  diskLimitOn: true,
   diskLimit: 50 * GB,
   diskUsed: 12 * GB,
   diskLimitReached: false,
@@ -44,9 +45,14 @@ function setUp(
     now,
   });
   document.body.append(panel.element);
-  const input = panel.element.querySelector('input') as HTMLInputElement;
+  const input = panel.element.querySelector(
+    'input[name="diskLimit"]',
+  ) as HTMLInputElement;
+  const limitOn = panel.element.querySelector(
+    'input[name="diskLimitOn"]',
+  ) as HTMLInputElement;
   const form = panel.element.querySelector('form') as HTMLFormElement;
-  return { panel, input, form, saveSettings };
+  return { panel, input, limitOn, form, saveSettings };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve));
@@ -76,7 +82,7 @@ describe('limitText and usageText', () => {
 
   it('says how much is used, and what happens at the limit', () => {
     expect(usageText(UNDER)).toBe('Torrents use 12 GB of 50 GB.');
-    expect(usageText({ ...UNDER, diskLimit: null })).toBe(
+    expect(usageText({ ...UNDER, diskLimitOn: false })).toBe(
       'Torrents use 12 GB. No limit.',
     );
     expect(
@@ -124,7 +130,10 @@ describe('settingsPanel', () => {
     form.requestSubmit();
     await flush();
 
-    expect(saveSettings).toHaveBeenCalledWith({ diskLimit: 20 * GB });
+    expect(saveSettings).toHaveBeenCalledWith({
+      diskLimitOn: true,
+      diskLimit: 20 * GB,
+    });
     expect(input.value).toBe('20');
     expect(panel.element.querySelector('[role="status"]')?.textContent).toBe(
       'Saved',
@@ -132,13 +141,53 @@ describe('settingsPanel', () => {
     expect(panel.element.textContent).toContain('of 20 GB');
   });
 
-  it('saves an empty input as no limit', async () => {
-    const { panel, input, form, saveSettings } = setUp();
+  it('turning the limit off disables the input and saves it off', async () => {
+    const { panel, input, limitOn, form, saveSettings } = setUp();
     await panel.load();
-    input.value = '';
+    expect(limitOn.checked).toBe(true);
+    expect(input.disabled).toBe(false);
+
+    limitOn.checked = false;
+    limitOn.dispatchEvent(new Event('input'));
+    expect(input.disabled).toBe(true);
+    // The number stays, greyed out, for when it is turned on again.
+    expect(input.value).toBe('50');
+    saveSettings.mockResolvedValueOnce({ ...UNDER, diskLimitOn: false });
     form.requestSubmit();
     await flush();
-    expect(saveSettings).toHaveBeenCalledWith({ diskLimit: null });
+
+    expect(saveSettings).toHaveBeenCalledWith({ diskLimitOn: false });
+    expect(panel.element.textContent).toContain('No limit.');
+    expect(input.disabled).toBe(true);
+  });
+
+  it('shows a saved limit that is off with its number disabled', async () => {
+    const { panel, input, limitOn } = setUp(async () => ({
+      ...UNDER,
+      diskLimitOn: false,
+    }));
+    await panel.load();
+    expect(limitOn.checked).toBe(false);
+    expect(input.disabled).toBe(true);
+    expect(input.value).toBe('50');
+  });
+
+  it('turning it on needs a number', async () => {
+    const { panel, input, limitOn, form, saveSettings } = setUp(async () => ({
+      ...UNDER,
+      diskLimitOn: false,
+      diskLimit: null,
+    }));
+    await panel.load();
+    limitOn.checked = true;
+    limitOn.dispatchEvent(new Event('input'));
+    expect(input.disabled).toBe(false);
+    form.requestSubmit();
+    await flush();
+    expect(saveSettings).not.toHaveBeenCalled();
+    expect(panel.element.querySelector('[role="alert"]')?.textContent).toBe(
+      'Enter a number of gigabytes above 0, or turn the limit off',
+    );
   });
 
   it('shows an error for a limit it can’t read, without saving', async () => {
@@ -150,7 +199,7 @@ describe('settingsPanel', () => {
     expect(saveSettings).not.toHaveBeenCalled();
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(panel.element.querySelector('[role="alert"]')?.textContent).toBe(
-      'Enter a number of gigabytes above 0, or leave it empty',
+      'Enter a number of gigabytes above 0, or turn the limit off',
     );
   });
 

@@ -222,13 +222,17 @@ and saved in `DOWNLOAD_DIR/.settings.json`, so every device sees the same
 limit and it survives a restart. Once the torrents' data reaches it, every
 torrent still downloading pauses ("Paused: disk limit reached"), and adding
 or resuming one answers `507`. Finished torrents keep seeding, and what is on
-disk still plays. Removing a torrent or raising the limit lets the paused
-ones carry on by themselves. The same setting is at `/api/settings`:
+disk still plays. Removing a torrent, raising the limit or turning it off
+lets the paused ones carry on by themselves. The checkbox turns the limit off
+and on; while it is off the number is greyed out and kept for next time. The
+same setting is at `/api/settings`:
 
 ```sh
 curl localhost:1234/api/settings
 curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
-  -d '{"diskLimit": 50000000000}'   # bytes; null for no limit
+  -d '{"diskLimitOn": true, "diskLimit": 50000000000}'   # bytes
+curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
+  -d '{"diskLimitOn": false}'                            # off, number kept
 ```
 
 Files and folders in `DOWNLOAD_DIR` that no torrent owns, for example from a

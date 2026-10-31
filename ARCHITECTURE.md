@@ -515,19 +515,24 @@ Decision #36. Since 4.3a keeps downloads across restarts, `DOWNLOAD_DIR` only
 grows, so the user sets a limit on the page.
 
 - **Where settings live.** `SettingsStore` (`server/settings.ts`) keeps them
-  in one JSON file, `DOWNLOAD_DIR/.settings.json` (`{"diskLimit": <bytes> |
-  null}`), written like the saved torrents through `writeFileAtomically()`
+  in one JSON file, `DOWNLOAD_DIR/.settings.json` (`{"diskLimitOn": <bool>,
+  "diskLimit": <bytes> | null}`), written like the saved torrents through `writeFileAtomically()`
   (`server/atomic-file.ts`) and queued so quick changes land in order. It
   sits with the downloads it limits, needs no dependency, and is the same on
   every device, unlike browser storage; VLC on the TV has no page anyway.
   `DISK_LIMIT_GB` only sets the value used until one is saved; a saved
-  `null` (no limit) wins over it too. An unreadable file is logged, ignored
+  "off" wins over it too. On/off is kept apart from the number, so the page's
+  checkbox can turn the limit off and back on without retyping it; only
+  `activeDiskLimit()` (the number while on, else none) reaches `DiskLimit`. An unreadable file is logged, ignored
   and left on disk. Considered: an env var alone (can't change it from the
   page), `localStorage` (per device, while the server enforces it), SQLite
   via `node:sqlite` (too much for one value) and npm config libraries.
 - **API.** `GET /api/settings` answers the settings plus `diskUsed` and
   `diskLimitReached`; `PUT` takes any of the keys, keeps the rest, applies
-  at once and saves. A bad value is `400`.
+  at once and saves. Turning it off keeps the number; turning it on with no
+  number, or any bad value, is `400`. A `diskLimit` sent without
+  `diskLimitOn` (as before the checkbox) turns the limit on for a number and
+  off for `null`, and a file saved before the checkbox reads the same way.
 - **Usage.** `DiskLimit` (`server/disk-limit.ts`) adds up
   `torrent.downloaded` over the running torrents: WebTorrent counts verified
   and partly downloaded pieces, which is what their files hold on disk.

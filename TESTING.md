@@ -262,7 +262,8 @@ hand:
    little above what the torrents use now, and play or add something. Once
    usage reaches it, the downloading torrents show "Paused: disk limit
    reached", the list shows the amber disk-limit banner, and adding another
-   is refused; raising the limit resumes them.
+   is refused; raising the limit, or unticking the checkbox (which greys
+   out the number) and saving, resumes them.
    A restart keeps the limit. Put a folder of your own in `DOWNLOAD_DIR`
    and reload: it shows under Leftover files, and Delete removes it after
    the confirmation.

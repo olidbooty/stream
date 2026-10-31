@@ -8,7 +8,7 @@ import type WebTorrent from 'webtorrent';
 import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import { DiskLimit } from './disk-limit.js';
 import { SavedTorrents } from './saved-torrents.js';
-import { SettingsStore } from './settings.js';
+import { activeDiskLimit, SettingsStore } from './settings.js';
 import { settingsRouter } from './settings-api.js';
 import { DISK_LIMIT_MESSAGE, torrentsRouter } from './torrents-api.js';
 
@@ -31,12 +31,15 @@ describe('disk limit', () => {
   beforeEach(() => {
     downloadDir = mkdtempSync(join(tmpdir(), 'stream-disk-'));
     client = new FakeWebTorrent();
-    settings = new SettingsStore(downloadDir, { diskLimit: 1000 });
+    settings = new SettingsStore(downloadDir, {
+      diskLimitOn: true,
+      diskLimit: 1000,
+    });
     saved = new SavedTorrents(downloadDir);
     // Checked by hand in these tests rather than on the timer.
     disk = new DiskLimit({
       client: client as unknown as WebTorrent,
-      limit: () => settings.get().diskLimit,
+      limit: () => activeDiskLimit(settings.get()),
       intervalMs: 60_000,
     });
     app = express();
@@ -108,7 +111,7 @@ describe('disk limit', () => {
     expect(await stateOf(OTHER)).toBe('paused');
     expect(busy.paused).toBe(true);
 
-    settings.set({ diskLimit: null });
+    settings.set({ diskLimitOn: false, diskLimit: null });
     disk.check();
     expect(busy.paused).toBe(false);
     // Paused by the user, so it stays paused.
@@ -139,7 +142,7 @@ describe('disk limit', () => {
     // Pausing it makes it the user's: raising the limit doesn't resume it.
     await request(app).post(`/api/torrents/${HASH}/pause`);
     expect(await stateOf(HASH)).toBe('paused');
-    settings.set({ diskLimit: 5000 });
+    settings.set({ diskLimitOn: true, diskLimit: 5000 });
     disk.check();
     expect(torrent.paused).toBe(true);
   });
@@ -186,6 +189,7 @@ describe('disk limit', () => {
       const res = await request(app).get('/api/settings');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
+        diskLimitOn: true,
         diskLimit: 1000,
         diskUsed: 250,
         diskLimitReached: false,
@@ -200,9 +204,10 @@ describe('disk limit', () => {
 
       const res = await request(app)
         .put('/api/settings')
-        .send({ diskLimit: 1500 });
+        .send({ diskLimitOn: true, diskLimit: 1500 });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
+        diskLimitOn: true,
         diskLimit: 1500,
         diskUsed: 1000,
         diskLimitReached: false,
@@ -210,19 +215,29 @@ describe('disk limit', () => {
       expect(torrent.paused).toBe(false);
 
       const next = new SettingsStore(downloadDir);
-      expect(await next.load()).toEqual({ diskLimit: 1500 });
+      expect(await next.load()).toEqual({ diskLimitOn: true, diskLimit: 1500 });
     });
 
     it('takes null for no limit', async () => {
       const res = await request(app)
         .put('/api/settings')
-        .send({ diskLimit: null });
-      expect(res.body.diskLimit).toBeNull();
-      expect(res.body.diskLimitReached).toBe(false);
+        .send({ diskLimitOn: false });
+      // The number stays for when it is turned on again.
+      expect(res.body).toMatchObject({
+        diskLimitOn: false,
+        diskLimit: 1000,
+        diskLimitReached: false,
+      });
+      expect(disk.usage().limit).toBeNull();
     });
 
     it('refuses a bad limit and keeps the old one', async () => {
-      for (const body of [{ diskLimit: -1 }, { diskLimit: '5GB' }, [1]]) {
+      for (const body of [
+        { diskLimitOn: true, diskLimit: -1 },
+        { diskLimitOn: true, diskLimit: '5GB' },
+        { diskLimitOn: true, diskLimit: null },
+        [1],
+      ]) {
         const res = await request(app).put('/api/settings').send(body);
         expect(res.status).toBe(400);
       }
@@ -236,7 +251,7 @@ describe('disk limit', () => {
         .type('form')
         .send('diskLimit=5');
       expect(form.status).toBe(415);
-      expect(settings.get()).toEqual({ diskLimit: 1000 });
+      expect(settings.get()).toEqual({ diskLimitOn: true, diskLimit: 1000 });
     });
   });
 });

@@ -1,7 +1,12 @@
 import { createApp } from './app.js';
 import { lanAddresses } from './network.js';
 import { SavedTorrents } from './saved-torrents.js';
-import { defaultSettings, GB, SettingsStore } from './settings.js';
+import {
+  activeDiskLimit,
+  defaultSettings,
+  GB,
+  SettingsStore,
+} from './settings.js';
 import {
   createTorrentClient,
   destroyTorrentClient,
@@ -49,7 +54,7 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
       );
     }
     console.log(`  downloads go to ${config.downloadDir}`);
-    const { diskLimit } = settings.get();
+    const diskLimit = activeDiskLimit(settings.get());
     if (diskLimit !== null) {
       console.log(`  limited to ${diskLimit / GB} GB (change it in Settings)`);
     }

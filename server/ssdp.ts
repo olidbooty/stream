@@ -181,7 +181,9 @@ export class SsdpServer {
 
   // Binds the SSDP port and announces the server. Resolves false, after
   // logging why, if the port can't be used; the rest of the server runs on.
+  // Starting while it is running does nothing.
   start(): Promise<boolean> {
+    if (this.socket) return Promise.resolve(true);
     const socket = this.options.createSocket();
     return new Promise((resolve) => {
       let bound = false;
@@ -209,13 +211,16 @@ export class SsdpServer {
     });
   }
 
-  // Says goodbye on every interface and closes the socket.
+  // Says goodbye on every interface and closes the socket. It can be started
+  // again afterwards, as when the DLNA setting is turned off and on.
   async stop(): Promise<void> {
     this.stopTimers();
     const socket = this.socket;
     if (!socket) return;
     await this.multicast(null);
     this.socket = undefined;
+    // A new socket joins the group again.
+    this.joined.clear();
     await new Promise<void>((resolve) => socket.close(() => resolve()));
   }
 

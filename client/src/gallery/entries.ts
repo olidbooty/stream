@@ -212,12 +212,23 @@ function list(torrents: TorrentSummary[], stale = false): HTMLElement {
 function tv(
   playlistUrls: string[],
   dlnaName: string | null = null,
+  dlnaOn = dlnaName !== null,
 ): HTMLElement {
   const t = tvPlaylist({
-    api: { getTv: async () => ({ playlistUrls, dlnaName }) },
+    api: {
+      getTv: async () => ({ playlistUrls, dlnaName, dlnaOn }),
+      saveSettings: async (changes) => ({
+        diskLimitOn: false,
+        diskLimit: null,
+        dlnaOn,
+        diskUsed: 0,
+        diskLimitReached: false,
+        ...changes,
+      }),
+    },
     clipboard: { writeText: async () => {} },
   });
-  t.update(playlistUrls, dlnaName);
+  t.update(playlistUrls, dlnaName, dlnaOn);
   return t.element;
 }
 
@@ -497,7 +508,13 @@ export const entries: GalleryEntry[] = [
   },
   {
     component: 'Watch on TV',
-    state: 'one address, DLNA off',
+    state: 'DLNA turned off',
+    render: () =>
+      tv(['http://192.168.1.20:1234/tv.m3u'], 'stream on studio', false),
+  },
+  {
+    component: 'Watch on TV',
+    state: 'one address, no DLNA (HOST is local)',
     render: () => tv(['http://192.168.1.20:1234/tv.m3u']),
   },
   {
@@ -518,6 +535,7 @@ export const entries: GalleryEntry[] = [
       settings({
         diskLimitOn: false,
         diskLimit: 50 * GB,
+        dlnaOn: true,
         diskUsed: 12.4 * GB,
         diskLimitReached: false,
       }),
@@ -529,6 +547,7 @@ export const entries: GalleryEntry[] = [
       settings({
         diskLimitOn: true,
         diskLimit: 50 * GB,
+        dlnaOn: true,
         diskUsed: 12.4 * GB,
         diskLimitReached: false,
       }),
@@ -540,6 +559,7 @@ export const entries: GalleryEntry[] = [
       settings({
         diskLimitOn: true,
         diskLimit: 50 * GB,
+        dlnaOn: true,
         diskUsed: 50.2 * GB,
         diskLimitReached: true,
       }),
@@ -552,6 +572,7 @@ export const entries: GalleryEntry[] = [
         {
           diskLimitOn: true,
           diskLimit: 50 * GB,
+          dlnaOn: true,
           diskUsed: 12.4 * GB,
           diskLimitReached: false,
         },
@@ -571,6 +592,7 @@ export const entries: GalleryEntry[] = [
       const element = settings({
         diskLimitOn: true,
         diskLimit: 50 * GB,
+        dlnaOn: true,
         diskUsed: 12.4 * GB,
         diskLimitReached: false,
       });

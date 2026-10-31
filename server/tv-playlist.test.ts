@@ -176,6 +176,7 @@ describe('TV playlist routes', () => {
     expect(res.body).toEqual({
       playlistUrls: ['http://192.168.1.20:1234/tv.m3u'],
       dlnaName: null,
+      dlnaOn: false,
     });
   });
 
@@ -195,5 +196,6 @@ describe('TV playlist routes', () => {
       .set('Host', '192.168.1.20:1234');
 
     expect(res.body.dlnaName).toBe('stream on studio');
+    expect(res.body.dlnaOn).toBe(true);
   });
 });

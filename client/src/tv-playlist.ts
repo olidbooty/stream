@@ -3,7 +3,8 @@ import { button } from './ui/button.js';
 import { el } from './ui/dom.js';
 
 export interface TvPlaylistOptions {
-  api: Pick<Api, 'getTv'>;
+  // saveSettings turns the DLNA server on and off (step 3.12).
+  api: Pick<Api, 'getTv' | 'saveSettings'>;
   // navigator.clipboard, which only exists on secure pages such as
   // localhost. Without it the address is still there to select.
   clipboard?: Pick<Clipboard, 'writeText'>;
@@ -12,8 +13,13 @@ export interface TvPlaylistOptions {
 export interface TvPlaylist {
   element: HTMLElement;
   // Shows the playlist address: the first one to try, then any others; and,
-  // with DLNA on, the server's name in VLC's Local network list.
-  update(playlistUrls: string[], dlnaName?: string | null): void;
+  // unless HOST keeps it off the network, the DLNA server's name in VLC's
+  // Local network list with a switch to turn it on and off.
+  update(
+    playlistUrls: string[],
+    dlnaName?: string | null,
+    dlnaOn?: boolean,
+  ): void;
   // Asks the server for the addresses; hidden if it can't answer.
   load(): Promise<void>;
   // Shown with the settings page, once there is something to show.
@@ -47,7 +53,27 @@ export function tvPlaylist({ api, clipboard }: TvPlaylistOptions): TvPlaylist {
   const noNetwork = el('p', {
     text: 'This computer has no network address another device can reach, so the TV can’t connect yet. Check it is on your home network, then reload.',
   });
-  const dlna = el('p', { className: 'tv-playlist__dlna' });
+  const dlnaText = el('p', { className: 'tv-playlist__dlna' });
+  const dlnaSwitch = el('input', {
+    attrs: { type: 'checkbox', name: 'dlnaOn' },
+  });
+  const dlnaError = el('p', {
+    className: 'field__error',
+    attrs: { role: 'alert' },
+  });
+  dlnaError.hidden = true;
+  const dlna = el(
+    'div',
+    { className: 'tv-playlist__dlna-group' },
+    dlnaText,
+    el(
+      'label',
+      { className: 'settings__switch' },
+      dlnaSwitch,
+      'Show this computer in VLC’s Local network (DLNA)',
+    ),
+    dlnaError,
+  );
   const playlistIntro = el('p');
   const found = el(
     'div',
@@ -78,11 +104,42 @@ export function tvPlaylist({ api, clipboard }: TvPlaylistOptions): TvPlaylist {
   };
   show();
 
-  function update(playlistUrls: string[], dlnaName?: string | null): void {
-    const [first, ...rest] = playlistUrls;
+  let dlnaName: string | null = null;
+  function showDlna(on: boolean): void {
     dlna.hidden = !dlnaName;
-    dlna.textContent = `In VLC on your TV, open Browse, then Local network, then “${dlnaName}”. Each torrent is a folder of its videos, and their subtitles are in VLC’s subtitles menu.`;
-    playlistIntro.textContent = `${dlnaName ? 'Or, if it isn’t listed there, choose' : 'In VLC on your TV, choose'} Stream (Network Stream in some versions), enter this address and save it as a favourite. It lists every video here, including ones added later.`;
+    dlnaSwitch.checked = on;
+    dlnaText.textContent = on
+      ? `In VLC on your TV, open Browse, then Local network, then “${dlnaName}”. Each torrent is a folder of its videos, and their subtitles are in VLC’s subtitles menu.`
+      : `Turn this on to browse each torrent as a folder in VLC on your TV, under Browse, then Local network, then “${dlnaName}”, with subtitles.`;
+    playlistIntro.textContent = `${dlnaName && on ? 'Or, if it isn’t listed there, choose' : 'In VLC on your TV, choose'} Stream (Network Stream in some versions), enter this address and save it as a favourite. It lists every video here, including ones added later.`;
+  }
+
+  dlnaSwitch.addEventListener('change', async () => {
+    const on = dlnaSwitch.checked;
+    dlnaError.textContent = '';
+    dlnaError.hidden = true;
+    showDlna(on);
+    dlnaSwitch.disabled = true;
+    try {
+      showDlna((await api.saveSettings({ dlnaOn: on })).dlnaOn);
+    } catch (err) {
+      showDlna(!on);
+      dlnaError.textContent =
+        err instanceof Error ? err.message : 'Couldn’t change the setting';
+      dlnaError.hidden = false;
+    } finally {
+      dlnaSwitch.disabled = false;
+    }
+  });
+
+  function update(
+    playlistUrls: string[],
+    name: string | null = null,
+    dlnaOn = false,
+  ): void {
+    const [first, ...rest] = playlistUrls;
+    dlnaName = name;
+    showDlna(dlnaOn);
     loaded = true;
     show();
     found.hidden = !first;
@@ -98,8 +155,8 @@ export function tvPlaylist({ api, clipboard }: TvPlaylistOptions): TvPlaylist {
     update,
     async load() {
       try {
-        const { playlistUrls, dlnaName } = await api.getTv();
-        update(playlistUrls, dlnaName);
+        const { playlistUrls, dlnaName, dlnaOn } = await api.getTv();
+        update(playlistUrls, dlnaName, dlnaOn);
       } catch {
         // Not worth an error: the TV address is optional, and the status
         // banner already says when the server is down.

@@ -34,6 +34,7 @@ describe('disk limit', () => {
     settings = new SettingsStore(downloadDir, {
       diskLimitOn: true,
       diskLimit: 1000,
+      dlnaOn: true,
     });
     saved = new SavedTorrents(downloadDir);
     // Checked by hand in these tests rather than on the timer.
@@ -111,7 +112,7 @@ describe('disk limit', () => {
     expect(await stateOf(OTHER)).toBe('paused');
     expect(busy.paused).toBe(true);
 
-    settings.set({ diskLimitOn: false, diskLimit: null });
+    settings.set({ diskLimitOn: false, diskLimit: null, dlnaOn: true });
     disk.check();
     expect(busy.paused).toBe(false);
     // Paused by the user, so it stays paused.
@@ -142,7 +143,7 @@ describe('disk limit', () => {
     // Pausing it makes it the user's: raising the limit doesn't resume it.
     await request(app).post(`/api/torrents/${HASH}/pause`);
     expect(await stateOf(HASH)).toBe('paused');
-    settings.set({ diskLimitOn: true, diskLimit: 5000 });
+    settings.set({ diskLimitOn: true, diskLimit: 5000, dlnaOn: true });
     disk.check();
     expect(torrent.paused).toBe(true);
   });
@@ -191,6 +192,7 @@ describe('disk limit', () => {
       expect(res.body).toEqual({
         diskLimitOn: true,
         diskLimit: 1000,
+        dlnaOn: true,
         diskUsed: 250,
         diskLimitReached: false,
       });
@@ -204,18 +206,23 @@ describe('disk limit', () => {
 
       const res = await request(app)
         .put('/api/settings')
-        .send({ diskLimitOn: true, diskLimit: 1500 });
+        .send({ diskLimitOn: true, diskLimit: 1500, dlnaOn: true });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         diskLimitOn: true,
         diskLimit: 1500,
+        dlnaOn: true,
         diskUsed: 1000,
         diskLimitReached: false,
       });
       expect(torrent.paused).toBe(false);
 
       const next = new SettingsStore(downloadDir);
-      expect(await next.load()).toEqual({ diskLimitOn: true, diskLimit: 1500 });
+      expect(await next.load()).toEqual({
+        diskLimitOn: true,
+        diskLimit: 1500,
+        dlnaOn: true,
+      });
     });
 
     it('takes null for no limit', async () => {
@@ -226,6 +233,7 @@ describe('disk limit', () => {
       expect(res.body).toMatchObject({
         diskLimitOn: false,
         diskLimit: 1000,
+        dlnaOn: true,
         diskLimitReached: false,
       });
       expect(disk.usage().limit).toBeNull();
@@ -233,9 +241,9 @@ describe('disk limit', () => {
 
     it('refuses a bad limit and keeps the old one', async () => {
       for (const body of [
-        { diskLimitOn: true, diskLimit: -1 },
-        { diskLimitOn: true, diskLimit: '5GB' },
-        { diskLimitOn: true, diskLimit: null },
+        { diskLimitOn: true, diskLimit: -1, dlnaOn: true },
+        { diskLimitOn: true, diskLimit: '5GB', dlnaOn: true },
+        { diskLimitOn: true, diskLimit: null, dlnaOn: true },
         [1],
       ]) {
         const res = await request(app).put('/api/settings').send(body);
@@ -251,7 +259,11 @@ describe('disk limit', () => {
         .type('form')
         .send('diskLimit=5');
       expect(form.status).toBe(415);
-      expect(settings.get()).toEqual({ diskLimitOn: true, diskLimit: 1000 });
+      expect(settings.get()).toEqual({
+        diskLimitOn: true,
+        diskLimit: 1000,
+        dlnaOn: true,
+      });
     });
   });
 });

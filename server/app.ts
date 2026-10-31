@@ -25,7 +25,8 @@ export interface AppOptions {
   restore?: readonly SavedTorrent[];
   // The machine's LAN addresses, for the TV playlist; tests pass their own.
   lanAddresses?: () => string[];
-  // Step 3.12: the DLNA server's name and UDN, or none to leave it off.
+  // Step 3.12: the DLNA server's name and UDN, or none when HOST keeps the
+  // server off the network. The DLNA setting turns it on and off.
   dlna?: DeviceInfo;
   // Decision #36: the user's settings, loaded at startup. Without it they
   // start as defaults and are saved in downloadDir.
@@ -72,10 +73,15 @@ export function createApp({
   app.use(leftoversRouter({ client, downloadDir }));
 
   // Step 3.11: /tv.m3u for VLC on a TV, and /api/tv with its address.
-  app.use(tvRouter({ client, lanAddresses, dlnaName: dlna?.name }));
-
-  // Step 3.12: VLC's Browse > Local network lists each torrent as a folder.
-  if (dlna) app.use(dlnaRouter({ client, device: dlna, lanAddresses }));
+  // Step 3.12: VLC's Browse > Local network lists each torrent as a folder,
+  // while the DLNA setting is on.
+  const dlnaOn = () => settings.get().dlnaOn;
+  app.use(tvRouter({ client, lanAddresses, dlnaName: dlna?.name, dlnaOn }));
+  if (dlna) {
+    app.use(
+      dlnaRouter({ client, device: dlna, enabled: dlnaOn, lanAddresses }),
+    );
+  }
 
   app.use((_req, res) => {
     res.status(404).type('text/plain').send('Not Found');

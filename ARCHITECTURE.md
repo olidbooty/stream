@@ -516,7 +516,7 @@ grows, so the user sets a limit on the page.
 
 - **Where settings live.** `SettingsStore` (`server/settings.ts`) keeps them
   in one JSON file, `DOWNLOAD_DIR/.settings.json` (`{"diskLimitOn": <bool>,
-  "diskLimit": <bytes> | null}`), written like the saved torrents through `writeFileAtomically()`
+  "diskLimit": <bytes> | null, "dlnaOn": <bool>}`, the last from 3.12), written like the saved torrents through `writeFileAtomically()`
   (`server/atomic-file.ts`) and queued so quick changes land in order. It
   sits with the downloads it limits, needs no dependency, and is the same on
   every device, unlike browser storage; VLC on the TV has no page anyway.
@@ -736,9 +736,15 @@ part of UPnP, and it adds no dependency. VLC 3's `upnp` module
 - **ConnectionManager** answers `GetProtocolInfo` and reports no
   connections. `SUBSCRIBE` to either service gets a SID but no events are
   sent: VLC doesn't subscribe, and players browse again when a folder opens.
-- **Off.** `DLNA=0` turns it off, and so does a `HOST` other than `0.0.0.0`
-  or one of the LAN addresses, since players couldn't reach the HTTP port.
-  With `HOST` set to a LAN address, SSDP only uses that interface.
+- **On and off.** A setting, `dlnaOn` in `.settings.json` (Decision #36's
+  store), with a switch in Watch on TV; `DLNA=0` only makes it start off.
+  `start.ts` listens for setting changes (`SettingsStore.onChange()`) and
+  starts or stops `SsdpServer`, one change at a time: stopping sends
+  `ssdp:byebye` so VLC drops the server at once, and starting joins the group
+  on a new socket. While it is off the `/dlna` routes answer 404. A `HOST`
+  other than `0.0.0.0` or one of the LAN addresses leaves DLNA out entirely
+  (no switch), since players couldn't reach the HTTP port. With `HOST` set to
+  a LAN address, SSDP only uses that interface.
 - **Not done.** No `contentFeatures.dlna.org` headers on the stream route,
   which strict DLNA TVs ask for, and no icon or durations. VLC needs neither.
 
@@ -839,5 +845,5 @@ design stays next to the code.
 | 34 | A dropped `x.pe` peer is never dialled again | Decided | Accepted: WebTorrent adds a magnet's `x.pe=` peers once, so a torrent whose only peer was dropped after 30 s of silence stays at 0 peers until it is added again. Only local test setups have a single `x.pe` peer as their only source; the DHT and trackers find peers again in a real swarm. See [Buffer health](#buffer-health) |
 | 35 | Removing a torrent leaves its empty folder | Decided | Found in 4.3a: destroying the store deletes the files but not a multi-file torrent's top folder. Since 4.3, `DELETE` also removes the folders it leaves, only those with nothing left in them. See [Leftover files](#leftover-files) |
 | 36 | Where the disk limit setting is kept, and what happens at the limit | Decided | One JSON file, `DOWNLOAD_DIR/.settings.json`, written atomically like `.torrents` and changed from the page through `/api/settings`; `DISK_LIMIT_GB` is only the default (owner, 30 Oct 26). At the limit, torrents still downloading pause (`diskFull`) and adding or resuming answers `507`; they resume once usage is below it (owner, 30 Oct 26). Step 4.3. See [Disk limit and settings](#disk-limit-and-settings) |
-| 37 | DLNA server for browsing in VLC | Decided | Hand-written UPnP MediaServer on Express and `node:dgram`, on by default (`DLNA=0` turns it off, and it is off when `HOST` keeps the HTTP port local). One folder per torrent of its videos, same order as the playlist, with `?play` stream URLs and matching subtitles as `text/vtt` resources, which VLC lists as subtitle tracks. SSDP on UDP 1900 only answers and announces on LAN networks. The playlist stays as the fallback. Step 3.12. See [Browsing in VLC (DLNA)](#browsing-in-vlc-dlna) |
+| 37 | DLNA server for browsing in VLC | Decided | Hand-written UPnP MediaServer on Express and `node:dgram`, on by default, with an on/off switch in Watch on TV saved as the `dlnaOn` setting (owner, 31 Oct 26; `DLNA=0` starts it off). Not available when `HOST` keeps the HTTP port local. One folder per torrent of its videos, same order as the playlist, with `?play` stream URLs and matching subtitles as `text/vtt` resources, which VLC lists as subtitle tracks. SSDP on UDP 1900 only answers and announces on LAN networks. The playlist stays as the fallback. Step 3.12. See [Browsing in VLC (DLNA)](#browsing-in-vlc-dlna) |
 | 38 | Cleaning up files no torrent owns | Decided | Listed under Settings (`GET /api/leftovers`) with a Delete button per entry, never deleted automatically at startup, since `DOWNLOAD_DIR` may hold the user's own files (owner, 30 Oct 26). Nothing is listed while a torrent lacks its file list. Removing a multi-file torrent also removes its empty folders (#35). Step 4.3. See [Leftover files](#leftover-files) |

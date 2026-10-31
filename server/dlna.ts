@@ -83,13 +83,6 @@ function xmlUnescape(text: string): string {
   );
 }
 
-// DLNA=0 turns the DLNA server off; it is on by default.
-export function dlnaEnabled(value: string | undefined): boolean {
-  if (value === undefined || value === '' || value === '1') return true;
-  if (value === '0') return false;
-  throw new Error(`DLNA must be 1 or 0, got "${value}"`);
-}
-
 // "stream on studio" for a Mac called studio.local.
 export function deviceName(hostname: string): string {
   return `stream on ${hostname.replace(/\.local$/i, '')}`;
@@ -501,15 +494,19 @@ function parseCount(args: Map<string, string>, name: string): number {
 export interface DlnaRouterOptions {
   client: WebTorrent;
   device: DeviceInfo;
+  // The DLNA setting: while it is off the routes answer 404.
+  enabled?: () => boolean;
   lanAddresses?: () => string[];
 }
 
 export function dlnaRouter({
   client,
   device,
+  enabled = () => true,
   lanAddresses = systemLanAddresses,
 }: DlnaRouterOptions): Router {
   const router = Router();
+  router.use((_req, _res, next) => next(enabled() ? undefined : 'router'));
 
   // SystemUpdateID tells a player the content changed. It goes up whenever
   // the folders or their videos do, worked out when asked.

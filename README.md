@@ -34,7 +34,7 @@ over TCP, uTP and WebRTC. It is configured with environment variables:
 | `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
 | `DHT_PORT`     | `6882`        | UDP port for the DHT. `0` picks a random port |
 | `PORT_MAPPING` | `0`           | `1` lets the client ask your router to forward the peer port (UPnP and NAT-PMP) |
-| `DLNA`         | `1`           | `0` turns off the DLNA server that lists the torrents in VLC's Local network (UDP `1900`). It is also off when `HOST` is `127.0.0.1` |
+| `DLNA`         | `1`           | `0` starts with the DLNA server off (it lists the torrents in VLC's Local network over UDP `1900`). Only used until the switch under Settings is changed, which then wins. Not available when `HOST` is `127.0.0.1` |
 | `DISK_LIMIT_GB` | none         | Starting disk limit for the torrents, in decimal GB (`50`, `1.5`). Only used until a limit is saved under Settings on the page, which then wins |
 
 The startup log shows the peer port, which kinds of peers the client can use
@@ -119,8 +119,10 @@ computer's name (**Watch on TV** on the Settings page, the link in the header,
 shows the exact name). Each torrent is a folder of its videos, samples left out, and a
 video's matching subtitles are in VLC's subtitles menu (VLC doesn't turn them
 on by itself). Opening a video downloads it and resumes its torrent, like
-Play in the page. The TV must be on the same network as the computer; set
-`DLNA=0` to turn this off.
+Play in the page. The TV must be on the same network as the computer. The
+switch under the description turns it off and on at once (players are told
+when it goes), and is saved with the other settings; it is also
+`{"dlnaOn": false}` at `/api/settings`.
 
 If the server isn't listed there (some routers block the multicast it uses),
 **Watch on TV** also shows a playlist address like
@@ -157,7 +159,7 @@ The page uses this API, and scripts can too:
 | `DELETE /api/torrents/:infoHash` | Remove a torrent and delete its files, or clear a failed one. `204`, or `404` if it isn't there |
 | `GET /api/client` | Whether the torrent client is listening, its peer port and total speeds |
 | `GET /tv.m3u` | An M3U playlist for VLC: every video of every torrent with a file list, samples left out, each with an absolute `...stream?play` URL. Named after the torrent, or after the file when a torrent has several videos. URLs use the host the playlist was fetched on, or the LAN address when that is `localhost`. `Cache-Control: no-store` |
-| `GET /api/tv` | `{"playlistUrls": [...], "dlnaName": "..."}`: the playlist's address as another device would use it, one per LAN address (or the page's own host when it isn't `localhost`), empty with no network; and the DLNA server's name, or `null` when it is off |
+| `GET /api/tv` | `{"playlistUrls": [...], "dlnaName": "...", "dlnaOn": true}`: the playlist's address as another device would use it, one per LAN address (or the page's own host when it isn't `localhost`), empty with no network; the DLNA server's name, or `null` when `HOST` keeps it off the network; and whether the DLNA setting has it on |
 | `GET /dlna/device.xml` | The DLNA (UPnP MediaServer) device description that SSDP points players to. With `/dlna/ContentDirectory.xml`, `/dlna/ConnectionManager.xml` and SOAP control at `POST /dlna/control/...`; see [ARCHITECTURE.md](ARCHITECTURE.md#browsing-in-vlc-dlna) |
 
 Errors are JSON: `{"error": "..."}`.
@@ -245,6 +247,8 @@ curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
   -d '{"diskLimitOn": true, "diskLimit": 50000000000}'   # bytes
 curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
   -d '{"diskLimitOn": false}'                            # off, number kept
+curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
+  -d '{"dlnaOn": false}'                                 # DLNA off (3.12)
 ```
 
 Files and folders in `DOWNLOAD_DIR` that no torrent owns, for example from a

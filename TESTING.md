@@ -304,7 +304,8 @@ hand:
    `cvlc -vv --play-and-exit --run-time=3 --sub-track=0
    "upnp://http://<LAN address>:1234/dlna/control/ContentDirectory?ObjectID=0"`
    browses the folders, plays each video and loads its subtitles. Stopping the
-   server sends `ssdp:byebye`; a script that joins `239.255.255.250:1900`
+   server, or turning the DLNA switch off under Settings, sends `ssdp:byebye`
+   and turning it on sends `ssdp:alive` again; a script that joins `239.255.255.250:1900`
    shows the announcements.
 
 Real peer tests use your network and upload to the swarm (see

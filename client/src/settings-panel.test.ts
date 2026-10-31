@@ -15,6 +15,7 @@ const GB = 1_000_000_000;
 const UNDER: SettingsInfo = {
   diskLimitOn: true,
   diskLimit: 50 * GB,
+  dlnaOn: true,
   diskUsed: 12 * GB,
   diskLimitReached: false,
 };
@@ -177,6 +178,7 @@ describe('settingsPanel', () => {
       ...UNDER,
       diskLimitOn: false,
       diskLimit: null,
+      dlnaOn: true,
     }));
     await panel.load();
     limitOn.checked = true;

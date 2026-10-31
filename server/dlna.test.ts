@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type WebTorrent from 'webtorrent';
 import { FakeWebTorrent } from '../test/mocks/webtorrent.js';
 import { createApp } from './app.js';
@@ -10,11 +10,11 @@ import {
   deviceName,
   deviceUuid,
   didl,
-  dlnaEnabled,
   soapArgs,
   videoMimeType,
   xmlEscape,
 } from './dlna.js';
+import { NO_SETTINGS, SettingsStore } from './settings.js';
 
 const FILM = '08ada5a7a6183aae1e09d831df6748d566095a10';
 const SHOW = 'c9e15763f722f23e98a29decdfae341b98d53056';
@@ -49,16 +49,6 @@ describe('deviceName', () => {
   it('names the server after the computer, without .local', () => {
     expect(deviceName('studio.local')).toBe('stream on studio');
     expect(deviceName('nas')).toBe('stream on nas');
-  });
-});
-
-describe('dlnaEnabled', () => {
-  it('is on unless DLNA=0', () => {
-    expect(dlnaEnabled(undefined)).toBe(true);
-    expect(dlnaEnabled('')).toBe(true);
-    expect(dlnaEnabled('1')).toBe(true);
-    expect(dlnaEnabled('0')).toBe(false);
-    expect(() => dlnaEnabled('yes')).toThrow('DLNA must be 1 or 0');
   });
 });
 
@@ -130,6 +120,10 @@ describe('didl', () => {
 });
 
 describe('DLNA routes', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   let client: FakeWebTorrent;
   let app: ReturnType<typeof createApp>;
 
@@ -374,6 +368,26 @@ describe('DLNA routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.sid).toMatch(/^uuid:/);
+  });
+
+  it('answers 404 while the DLNA setting is off, and again once it is on', async () => {
+    const settings = new SettingsStore(
+      join(tmpdir(), 'stream-dlna-test-settings'),
+      { ...NO_SETTINGS, dlnaOn: false },
+    );
+    const gated = createApp({
+      client: client as unknown as WebTorrent,
+      downloadDir: join(tmpdir(), 'stream-dlna-test'),
+      lanAddresses: () => ['192.168.1.20'],
+      dlna: DEVICE,
+      settings,
+    });
+
+    expect((await request(gated).get('/dlna/device.xml')).status).toBe(404);
+    // Only the in-memory value matters here; the save may fail.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    void settings.set({ ...settings.get(), dlnaOn: true });
+    expect((await request(gated).get('/dlna/device.xml')).status).toBe(200);
   });
 
   it('is off without a device', async () => {

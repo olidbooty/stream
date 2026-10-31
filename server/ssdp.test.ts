@@ -299,6 +299,34 @@ describe('SsdpServer', () => {
     expect(socket.closed).toBe(true);
   });
 
+  it('starts again after a stop, joining the group on the new socket', async () => {
+    const ssdp = server();
+    await ssdp.start();
+    await flush();
+    const first = socket;
+    await ssdp.stop();
+    socket = new FakeSocket();
+
+    expect(await ssdp.start()).toBe(true);
+    await flush();
+
+    expect(first.closed).toBe(true);
+    expect(socket.memberships).toHaveLength(2);
+    expect(socket.sent[0].text).toContain('NTS: ssdp:alive');
+  });
+
+  it('does nothing when started twice', async () => {
+    const ssdp = server();
+    await ssdp.start();
+    await flush();
+    const sent = socket.sent.length;
+
+    expect(await ssdp.start()).toBe(true);
+    await flush();
+
+    expect(socket.sent).toHaveLength(sent);
+  });
+
   it('logs and carries on without DLNA when the port fails', async () => {
     socket.failBind = Object.assign(new Error('bind EACCES 0.0.0.0:1900'), {
       code: 'EACCES',

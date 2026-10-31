@@ -1,11 +1,6 @@
 import { hostname } from 'node:os';
 import { createApp } from './app.js';
-import {
-  type DeviceInfo,
-  deviceName,
-  deviceUuid,
-  dlnaEnabled,
-} from './dlna.js';
+import { type DeviceInfo, deviceName, deviceUuid } from './dlna.js';
 import { lanAddresses, lanInterfaces } from './network.js';
 import { SavedTorrents } from './saved-torrents.js';
 import {
@@ -105,7 +100,7 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
     }
     if (dlna) {
       const address = server.address();
-      ssdp = new SsdpServer({
+      const running = new SsdpServer({
         uuid: dlna.uuid,
         port: address && typeof address === 'object' ? address.port : port,
         // HOST set to one LAN address keeps DLNA to that network too.
@@ -114,13 +109,26 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
             (iface) => host === '0.0.0.0' || iface.address === host,
           ),
       });
-      void ssdp.start().then((started) => {
-        if (started) {
-          console.log(
-            `  in VLC on a TV: Browse > Local network > ${dlna.name} (DLNA=0 turns this off)`,
-          );
-        }
-      });
+      ssdp = running;
+      // The DLNA setting starts and stops announcing, one change at a time.
+      let applied: boolean | undefined;
+      let changes = Promise.resolve();
+      const apply = ({ dlnaOn }: { dlnaOn: boolean }) => {
+        changes = changes.then(async () => {
+          if (dlnaOn === applied) return;
+          applied = dlnaOn;
+          if (!dlnaOn) {
+            await running.stop();
+            console.log('DLNA off (turn it on in Settings)');
+          } else if (await running.start()) {
+            console.log(
+              `  in VLC on a TV: Browse > Local network > ${dlna.name} (turn it off in Settings)`,
+            );
+          }
+        });
+      };
+      apply(settings.get());
+      settings.onChange(apply);
     }
   });
 
@@ -150,10 +158,10 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
   process.on('SIGTERM', (signal) => void shutDown(signal));
 }
 
-// Step 3.12: the DLNA server, unless DLNA=0 or HOST keeps the HTTP port off
-// the network, where players couldn't reach it anyway.
+// Step 3.12: the DLNA server, unless HOST keeps the HTTP port off the
+// network, where players couldn't reach it anyway. The DLNA setting (DLNA=0
+// starts it off) turns it on and off while the server runs.
 function dlnaDevice(host: string, port: number): DeviceInfo | undefined {
-  if (!dlnaEnabled(process.env.DLNA)) return undefined;
   if (host !== '0.0.0.0' && !lanAddresses().includes(host)) {
     console.log(`DLNA off: HOST=${host} isn't reachable from the network`);
     return undefined;

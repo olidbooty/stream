@@ -34,6 +34,7 @@ over TCP, uTP and WebRTC. It is configured with environment variables:
 | `TORRENT_PORT` | `6881`        | TCP and UDP (uTP) port for incoming peers. `0` picks a random port on each start |
 | `DHT_PORT`     | `6882`        | UDP port for the DHT. `0` picks a random port |
 | `PORT_MAPPING` | `0`           | `1` lets the client ask your router to forward the peer port (UPnP and NAT-PMP) |
+| `DISK_LIMIT_GB` | none         | Starting disk limit for the torrents, in decimal GB (`50`, `1.5`). Only used until a limit is saved under Settings on the page, which then wins |
 
 The startup log shows the peer port, which kinds of peers the client can use
 and where downloads go. `GET /api/client` also returns the peer port.
@@ -110,7 +111,7 @@ which adds it again.
 
 ### Watching on a TV with VLC
 
-Below the torrent list, **Watch on TV** shows an address like
+On the Settings page (the link in the header), **Watch on TV** shows an address like
 `http://192.168.1.20:1234/tv.m3u`. In VLC on the TV (a Fire Stick, Android
 TV, or VLC on any computer), choose **Stream** (**Network Stream** in some
 versions), enter that address and save it as a favourite. It is a playlist of
@@ -215,6 +216,27 @@ is kept, re-checked at startup ("Checking files" for a while on a large
 torrent), and the download carries on from there. Failed torrents are not
 restored. Delete `DOWNLOAD_DIR/.torrents` to start with an empty list.
 
+The disk limit (Decision #36) is set on the Settings page (the Settings link
+in the header, or `#settings`), next to the Watch on TV address,
+and saved in `DOWNLOAD_DIR/.settings.json`, so every device sees the same
+limit and it survives a restart. Once the torrents' data reaches it, every
+torrent still downloading pauses ("Paused: disk limit reached"), and adding
+or resuming one answers `507`. Finished torrents keep seeding, and what is on
+disk still plays. Removing a torrent or raising the limit lets the paused
+ones carry on by themselves. The same setting is at `/api/settings`:
+
+```sh
+curl localhost:1234/api/settings
+curl -X PUT localhost:1234/api/settings -H 'Content-Type: application/json' \
+  -d '{"diskLimit": 50000000000}'   # bytes; null for no limit
+```
+
+Files and folders in `DOWNLOAD_DIR` that no torrent owns, for example from a
+torrent removed while the server was down, are listed under Settings as
+leftover files (Decision #38), each with a Delete button. Nothing is deleted
+until you press it. `GET /api/leftovers` lists them and
+`DELETE /api/leftovers/<name>` deletes one.
+
 ## Layout
 
 ```
@@ -230,6 +252,11 @@ server/torrent-client.ts  WebTorrent client setup, config from env vars
 server/torrents-api.ts    /api/torrents routes
 server/torrent-state.ts   torrent state (connecting, noPeers, ...) and failed torrents
 server/saved-torrents.ts  saves torrents in DOWNLOAD_DIR/.torrents and loads them at startup
+server/atomic-file.ts     writes a file through a temporary file and rename()
+server/settings.ts        the user's settings in DOWNLOAD_DIR/.settings.json
+server/settings-api.ts    /api/settings
+server/disk-limit.ts      pauses downloads at the disk limit
+server/leftovers.ts       /api/leftovers: files in DOWNLOAD_DIR no torrent owns
 server/event-stream.ts    server-sent events broadcaster
 server/file-stream.ts     serves a torrent file over HTTP with Range support
 server/magnet.ts          magnet link validation
@@ -242,7 +269,8 @@ client/src/api.ts         typed client for /api/torrents
 client/src/live-updates.ts  the page's one event stream (Decision #21)
 client/src/torrent-form.ts  add a magnet link or .torrent file
 client/src/torrent-list.ts  the live torrent list and its file lists
-client/src/tv-playlist.ts   Watch on TV: the playlist address for VLC
+client/src/tv-playlist.ts   Watch on TV on the settings page: the playlist address for VLC
+client/src/settings-panel.ts  Settings: the disk limit, usage and leftover files
 client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)

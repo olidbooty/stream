@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import express, {
   type ErrorRequestHandler,
   type Request,
@@ -10,8 +11,10 @@ import parseTorrent, {
 } from 'parse-torrent';
 import type WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
+import type { DiskLimit } from './disk-limit.js';
 import { EventStream, SSE_HEADERS } from './event-stream.js';
 import { streamFile } from './file-stream.js';
+import { removeEmptyFolders } from './leftovers.js';
 import { isMagnetURI } from './magnet.js';
 import {
   type FileMedia,
@@ -67,7 +70,14 @@ export interface TorrentsRouterOptions {
   // ones saved last time, to add again now. Without it nothing is saved.
   saved?: SavedTorrents;
   restore?: readonly SavedTorrent[];
+  // Decision #36: pauses downloads and refuses new torrents at the disk
+  // limit. Without it there is no limit.
+  disk?: DiskLimit;
 }
+
+// Answered when adding or resuming a torrent at the disk limit.
+export const DISK_LIMIT_MESSAGE =
+  'The downloads have reached the disk limit. Remove a torrent or raise the limit in Settings.';
 
 // What the list and the event stream show per torrent.
 export interface TorrentSummary {
@@ -136,6 +146,7 @@ function hasMetadata(torrent: Torrent): boolean {
 interface Tracking {
   watch: TorrentWatch;
   selection: TorrentSelection;
+  disk?: DiskLimit;
   // selectMedia() per torrent: the file list never changes once known, and
   // the list is summarised every second.
   media: WeakMap<Torrent, MediaSelection<MediaFileInput>>;
@@ -155,7 +166,7 @@ function mediaOf(
 
 function summarize(
   torrent: Torrent,
-  { watch, selection, media }: Tracking,
+  { watch, selection, media, disk }: Tracking,
   parsed?: ParsedTorrent,
 ): TorrentSummary {
   const selected = hasMetadata(torrent) ? selection.get(torrent) : undefined;
@@ -180,6 +191,7 @@ function summarize(
     state: torrentState({
       failed: false,
       paused: torrent.paused,
+      diskFull: disk?.pausedByLimit(torrent),
       done: progress?.done ?? torrent.done,
       hasMetadata: hasMetadata(torrent),
       numPeers: torrent.numPeers,
@@ -227,6 +239,7 @@ export function torrentsRouter({
   maxEventStreams = MAX_EVENT_STREAMS,
   saved,
   restore = [],
+  disk,
 }: TorrentsRouterOptions): Router {
   const router = Router();
   const watch = new TorrentWatch(client);
@@ -246,13 +259,32 @@ export function torrentsRouter({
     const selected = selection.get(torrent);
     void saved.save(infoHash, {
       ...choices,
-      paused: torrent.paused,
+      // A pause by the disk limit isn't saved: the limit pauses it again
+      // after a restart if it is still reached.
+      paused: torrent.paused && !disk?.pausedByLimit(torrent),
       selected: selected ? [...selected].sort((a, b) => a - b) : null,
     });
   };
 
   const selection = new TorrentSelection(save);
-  const tracking: Tracking = { watch, selection, media: new WeakMap() };
+  const tracking: Tracking = {
+    watch,
+    selection,
+    media: new WeakMap(),
+    disk,
+  };
+  if (disk) {
+    disk.downloading = (torrent) => {
+      const selected = hasMetadata(torrent) && selection.get(torrent);
+      return selected
+        ? !selectionProgress(torrent.files, selected).done
+        : false;
+    };
+  }
+
+  // At the disk limit only torrents that would download nothing may run.
+  const blockedByDisk = (torrent: Torrent): boolean =>
+    disk ? disk.reached() && disk.downloading(torrent) : false;
 
   const findTorrent = (infoHash: string): Torrent | undefined =>
     client.torrents.find((torrent) => torrent.infoHash === infoHash);
@@ -399,6 +431,8 @@ export function torrentsRouter({
         });
       }
 
+      if (disk?.reached()) return sendError(res, 507, DISK_LIMIT_MESSAGE);
+
       const torrent = start(parsed);
       res
         .status(201)
@@ -470,7 +504,9 @@ export function torrentsRouter({
       isVideoFile(torrent.files[index].name)
     ) {
       selection.selectVideo(torrent, index);
-      if (torrent.paused) {
+      // At the disk limit it stays paused; what is on disk still plays.
+      if (torrent.paused && !blockedByDisk(torrent)) {
+        disk?.release(torrent);
         resumeTorrent(torrent);
         save(torrent);
       }
@@ -505,7 +541,9 @@ export function torrentsRouter({
   });
 
   // Pause stops all transfer for the torrent; resume picks it up again.
-  // Both are idempotent.
+  // Both are idempotent. Either one takes a torrent the disk limit paused
+  // back into the user's hands, but resume is refused while the limit is
+  // reached.
   for (const [action, apply] of [
     ['pause', pauseTorrent],
     ['resume', resumeTorrent],
@@ -520,6 +558,10 @@ export function torrentsRouter({
           'This torrent failed; add it again to retry',
         );
       }
+      if (action === 'resume' && blockedByDisk(found.torrent as Torrent)) {
+        return sendError(res, 507, DISK_LIMIT_MESSAGE);
+      }
+      disk?.release(found.torrent as Torrent);
       apply(found.torrent as Torrent);
       save(found.torrent as Torrent);
       res.status(204).end();
@@ -530,8 +572,17 @@ export function torrentsRouter({
     const found = torrentFromParams(req, res);
     if (!found) return;
     if (found.torrent) {
+      // A multi-file torrent's folder, which its store leaves behind empty.
+      const folder = hasMetadata(found.torrent)
+        ? found.torrent.files[0]?.path.split(/[/\\]/)[0]
+        : undefined;
       await removeTorrent(client, found.torrent.infoHash);
+      if (folder && found.torrent.files.length > 1) {
+        await removeEmptyFolders(join(downloadDir, folder));
+      }
       await saved?.delete(found.torrent.infoHash);
+      // Resume what the limit paused, if this freed enough.
+      disk?.check();
     } else if (found.failed) watch.forget(found.failed.infoHash);
     res.status(204).end();
   });

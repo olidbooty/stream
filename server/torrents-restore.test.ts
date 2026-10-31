@@ -66,7 +66,9 @@ describe('saving and restoring torrents', () => {
     await startServer();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // A save still in flight would write into the folder as it is removed.
+    await saved.flush();
     FakeWebTorrent.reset();
     vi.restoreAllMocks();
     rmSync(downloadDir, { recursive: true, force: true });

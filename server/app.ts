@@ -1,7 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
+import { DiskLimit } from './disk-limit.js';
+import { leftoversRouter } from './leftovers.js';
 import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
+import { SettingsStore } from './settings.js';
+import { settingsRouter } from './settings-api.js';
 import { torrentsRouter } from './torrents-api.js';
 import { tvRouter } from './tv-playlist.js';
 
@@ -20,6 +24,9 @@ export interface AppOptions {
   restore?: readonly SavedTorrent[];
   // The machine's LAN addresses, for the TV playlist; tests pass their own.
   lanAddresses?: () => string[];
+  // Decision #36: the user's settings, loaded at startup. Without it they
+  // start as defaults and are saved in downloadDir.
+  settings?: SettingsStore;
 }
 
 // Build the Express app without binding a port, so tests can drive it with supertest.
@@ -30,6 +37,7 @@ export function createApp({
   saved,
   restore,
   lanAddresses,
+  settings = new SettingsStore(downloadDir),
 }: AppOptions): Express {
   const app = express();
 
@@ -48,10 +56,16 @@ export function createApp({
     });
   });
 
+  const disk = new DiskLimit({
+    client,
+    limit: () => settings.get().diskLimit,
+  });
   app.use(
     '/api/torrents',
-    torrentsRouter({ client, downloadDir, saved, restore }),
+    torrentsRouter({ client, downloadDir, saved, restore, disk }),
   );
+  app.use(settingsRouter({ settings, disk }));
+  app.use(leftoversRouter({ client, downloadDir }));
 
   // Step 3.11: /tv.m3u for VLC on a TV, and /api/tv with its address.
   app.use(tvRouter({ client, lanAddresses }));

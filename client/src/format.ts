@@ -53,6 +53,9 @@ export function stateLabel(
       return { tone: 'error', label: 'Failed' };
     case 'paused':
       return { tone: 'paused', label: 'Paused' };
+    case 'diskFull':
+      // Decision #36: it resumes by itself once there is room.
+      return { tone: 'diskFull', label: 'Paused: disk limit reached' };
   }
 }
 

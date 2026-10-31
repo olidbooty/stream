@@ -255,7 +255,7 @@ needs as arguments, so it can be tested in jsdom (see
 | `format.ts` | Sizes, speeds, percentages and state labels, including "Checking files" for a `connecting` torrent with `hasMetadata && !ready` (Decision #24); subtitle track names and the player's stats line |
 | `buffer-health.ts` | Step 3.5, as pure functions: seconds buffered ahead of the playhead from `video.buffered`, the video's average bitrate (file size over duration), and whether the download is too slow to keep up. See [Buffer health](#buffer-health) |
 | `media-error.ts` | The player's messages for each `MediaError` code and for a sound-only video (step 4.2a), as pure functions |
-| `tv-playlist.ts` | The **Watch on TV** section of the settings page (step 3.11): asks `GET /api/tv` for the playlist's address, shows it with a Copy button where the page has a clipboard, and hides itself when the server can't answer. See [Watching on a TV](#watching-on-a-tv) |
+| `tv-playlist.ts` | The **Watch on TV** section of the settings page (step 3.11): asks `GET /api/tv` for the playlist's address and, from 3.12, the DLNA server's name to look for in VLC's Local network; shows the address with a Copy button where the page has a clipboard, and hides itself when the server can't answer. See [Watching on a TV](#watching-on-a-tv) |
 | `settings-panel.ts` | The **Disk space** section of the settings page (Decision #36): usage, the disk limit form and the leftover files with their Delete buttons (#38). Also `diskFullMessage()`, the warning banner the list shows while a torrent is `diskFull`, since the usage itself is only on the settings page. See [Disk limit and settings](#disk-limit-and-settings) |
 | `player-route.ts` | The page's addresses: the player at `#play/<infoHash>/<index>` and the settings page at `#settings`, opened from the Settings link in the header. `main.ts` shows the list, the player or the settings page on `hashchange`, so Back closes the player or the settings and a link opens either on another device. The TV address and the disk space are on their own page because each is set once and rarely changed, which keeps the list page to adding and watching torrents |
 | `player.ts` | `createPlayer()`: fetches the torrent, starts the video's background download if it isn't selected (Decision #18), and shows `videoPlayer` with the stream URL and a `<track>` per matched subtitle. Maps media events to a status line: Loading, Buffering, "Waiting for data from peers" after 5 s of `waiting` or on `stalled` while waiting, and, from 4.2a, a message per `MediaError` code naming the file and its container (`media-error.ts`): not supported, can't decode, or cut off with a Retry that reloads the stream and seeks back. A video whose metadata loads with `videoWidth` 0 gets a sound-only warning. Errors and the warning use the status banner's look and stay up through later `playing` events until the next load. Closing removes the `src` and calls `load()`, which aborts the range request so the server stops prioritising its pieces. The stats line follows the page's one event stream (Decision #21) and, from 3.5, adds the seconds buffered ahead; a separate warning line says when the download is slower than the video ([Buffer health](#buffer-health)) |
@@ -516,7 +516,7 @@ grows, so the user sets a limit on the page.
 
 - **Where settings live.** `SettingsStore` (`server/settings.ts`) keeps them
   in one JSON file, `DOWNLOAD_DIR/.settings.json` (`{"diskLimitOn": <bool>,
-  "diskLimit": <bytes> | null}`), written like the saved torrents through `writeFileAtomically()`
+  "diskLimit": <bytes> | null, "dlnaOn": <bool>}`, the last from 3.12), written like the saved torrents through `writeFileAtomically()`
   (`server/atomic-file.ts`) and queued so quick changes land in order. It
   sits with the downloads it limits, needs no dependency, and is the same on
   every device, unlike browser storage; VLC on the TV has no page anyway.
@@ -684,7 +684,69 @@ stream URL, but typing one with a remote isn't practical, so `GET /tv.m3u`
   `#EXTVLCOPT:sub-file=` is read as a local path, so an `http://` subtitles
   URL fails to open, and `#EXTVLCOPT:input-slave=` is refused as an unsafe
   option. VLC for Android uses the same core. Subtitles on the TV would need
-  them muxed into the stream with ffmpeg (4.4).
+  them muxed into the stream with ffmpeg (4.4). The DLNA server (3.12, below)
+  can carry them.
+
+### Browsing in VLC (DLNA)
+
+Step 3.12 (Decision #37). The 3.11 playlist is one flat list and needs an
+address typed in once. VLC's **Browse > Local network** finds UPnP media
+servers by itself, so the server is one, and each torrent shows as a folder.
+Written by hand on Express and `node:dgram` (`server/dlna.ts`,
+`server/ssdp.ts`) rather than with a library: browsing needs only a small
+part of UPnP, and it adds no dependency. VLC 3's `upnp` module
+(`modules/services_discovery/upnp.cpp`) was read to see what it needs.
+
+- **Discovery (SSDP).** `SsdpServer` binds UDP `1900` (with `reuseAddr`, so
+  another media server on the machine can share it), joins the multicast
+  group `239.255.255.250` on each LAN interface, and multicasts `NOTIFY
+  ssdp:alive` for the root device, its UDN, `MediaServer:1`,
+  `ContentDirectory:1` and `ConnectionManager:1` at startup and every 10
+  minutes (`max-age` 1800), twice each since UDP can drop one. It answers an
+  `M-SEARCH` for any of those, or `ssdp:all`, within a second, with a
+  `LOCATION` on the interface the search came in on. Shutdown sends
+  `ssdp:byebye`, so VLC drops the server at once. If the port can't be bound
+  the server logs `DLNA off` and runs on.
+- **Description.** `GET /dlna/device.xml` names the server "stream on" and the
+  host name, with a UDN derived from the host name and HTTP port, so it
+  stays the same across restarts: VLC ignores a second server with a UDN it
+  already lists, and a player that remembers a server finds it again. The two
+  services' SCPDs are fixed XML.
+- **Browse.** `POST /dlna/control/ContentDirectory` handles the SOAP actions
+  players use: `Browse`, `GetSystemUpdateID`, `GetSearchCapabilities` and
+  `GetSortCapabilities`. ObjectID `0` is the root, holding one
+  `storageFolder` per torrent that has a video to list; a folder's ID is the
+  info hash and holds its videos (`<infoHash>/<index>`), in the same order as
+  the playlist with samples left out (`tvVideos()` in
+  `server/tv-playlist.ts`). Each video's resource is the 3.11 stream URL with
+  `?play` on the host the player used, with `protocolInfo`
+  `http-get:*:<type>:DLNA.ORG_OP=01` (byte seeking). VLC only lists a video
+  whose type starts with `video/`, so a container the MIME table doesn't know
+  gets `video/x-<extension>`. `StartingIndex` and `RequestedCount` page the
+  children; sort and search aren't supported. `SystemUpdateID` goes up when
+  the folders or their videos change. The arguments are read with a small
+  regular expression, since they are flat text elements, so there is no XML
+  parser to configure; everything written out is escaped, and characters XML
+  can't hold are dropped from torrent and file names.
+- **Subtitles.** Unlike a playlist, a DIDL-Lite item can carry them: each
+  matching subtitle (Decision #20) is a second `res` with `text/vtt`, the
+  3.4 WebVTT route, and the first is also `sec:CaptionInfoEx` for Samsung
+  TVs. VLC 3.0.20 adds each as a subtitle track, off until picked in its
+  subtitles menu.
+- **ConnectionManager** answers `GetProtocolInfo` and reports no
+  connections. `SUBSCRIBE` to either service gets a SID but no events are
+  sent: VLC doesn't subscribe, and players browse again when a folder opens.
+- **On and off.** A setting, `dlnaOn` in `.settings.json` (Decision #36's
+  store), with a switch in Watch on TV; `DLNA=0` only makes it start off.
+  `start.ts` listens for setting changes (`SettingsStore.onChange()`) and
+  starts or stops `SsdpServer`, one change at a time: stopping sends
+  `ssdp:byebye` so VLC drops the server at once, and starting joins the group
+  on a new socket. While it is off the `/dlna` routes answer 404. A `HOST`
+  other than `0.0.0.0` or one of the LAN addresses leaves DLNA out entirely
+  (no switch), since players couldn't reach the HTTP port. With `HOST` set to
+  a LAN address, SSDP only uses that interface.
+- **Not done.** No `contentFeatures.dlna.org` headers on the stream route,
+  which strict DLNA TVs ask for, and no icon or durations. VLC needs neither.
 
 ### Seeding
 
@@ -704,6 +766,13 @@ The peer port (`TORRENT_PORT`, TCP and uTP) and `DHT_PORT` always listen on
 all interfaces (Decision #8). WebTorrent would also ask the router to forward
 the peer port with UPnP/NAT-PMP; that is off unless `PORT_MAPPING=1`
 (Decision #7).
+
+The DLNA server (Decision #37) listens on UDP `1900` on all interfaces, as
+SSDP requires, but only answers searches from addresses on one of the
+machine's LAN networks, and only announces itself on those, with a multicast
+TTL of 2. Its answers are a few hundred bytes, unicast to the asker. It
+lists every torrent's videos to anyone on the LAN, which the page already
+does. Never forward UDP `1900` on the router.
 
 `/api/torrents` and `/api/settings` have no authentication (Decision #12),
 so anyone on the LAN can also change or remove the disk limit. A torrent also makes
@@ -776,4 +845,5 @@ design stays next to the code.
 | 34 | A dropped `x.pe` peer is never dialled again | Decided | Accepted: WebTorrent adds a magnet's `x.pe=` peers once, so a torrent whose only peer was dropped after 30 s of silence stays at 0 peers until it is added again. Only local test setups have a single `x.pe` peer as their only source; the DHT and trackers find peers again in a real swarm. See [Buffer health](#buffer-health) |
 | 35 | Removing a torrent leaves its empty folder | Decided | Found in 4.3a: destroying the store deletes the files but not a multi-file torrent's top folder. Since 4.3, `DELETE` also removes the folders it leaves, only those with nothing left in them. See [Leftover files](#leftover-files) |
 | 36 | Where the disk limit setting is kept, and what happens at the limit | Decided | One JSON file, `DOWNLOAD_DIR/.settings.json`, written atomically like `.torrents` and changed from the page through `/api/settings`; `DISK_LIMIT_GB` is only the default (owner, 30 Oct 26). At the limit, torrents still downloading pause (`diskFull`) and adding or resuming answers `507`; they resume once usage is below it (owner, 30 Oct 26). Step 4.3. See [Disk limit and settings](#disk-limit-and-settings) |
+| 37 | DLNA server for browsing in VLC | Decided | Hand-written UPnP MediaServer on Express and `node:dgram`, on by default, with an on/off switch in Watch on TV saved as the `dlnaOn` setting (owner, 31 Oct 26; `DLNA=0` starts it off). Not available when `HOST` keeps the HTTP port local. One folder per torrent of its videos, same order as the playlist, with `?play` stream URLs and matching subtitles as `text/vtt` resources, which VLC lists as subtitle tracks. SSDP on UDP 1900 only answers and announces on LAN networks. The playlist stays as the fallback. Step 3.12. See [Browsing in VLC (DLNA)](#browsing-in-vlc-dlna) |
 | 38 | Cleaning up files no torrent owns | Decided | Listed under Settings (`GET /api/leftovers`) with a Delete button per entry, never deleted automatically at startup, since `DOWNLOAD_DIR` may hold the user's own files (owner, 30 Oct 26). Nothing is listed while a torrent lacks its file list. Removing a multi-file torrent also removes its empty folders (#35). Step 4.3. See [Leftover files](#leftover-files) |

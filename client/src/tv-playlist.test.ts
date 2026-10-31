@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Api } from './api.js';
 import { tvPlaylist } from './tv-playlist.js';
 
 const URL_A = 'http://192.168.1.20:1234/tv.m3u';
@@ -9,10 +10,28 @@ afterEach(() => {
 });
 
 function setUp(
-  getTv: () => Promise<{ playlistUrls: string[] }>,
+  getTv: () => Promise<{
+    playlistUrls: string[];
+    dlnaName?: string | null;
+    dlnaOn?: boolean;
+  }>,
   clipboard?: Pick<Clipboard, 'writeText'>,
+  saveSettings: Api['saveSettings'] = vi.fn(),
 ) {
-  const tv = tvPlaylist({ api: { getTv }, clipboard });
+  const tv = tvPlaylist({
+    api: {
+      getTv: async () => {
+        const info = await getTv();
+        return {
+          dlnaName: null,
+          dlnaOn: info.dlnaName != null,
+          ...info,
+        };
+      },
+      saveSettings,
+    },
+    clipboard,
+  });
   document.body.append(tv.element);
   return tv;
 }
@@ -34,6 +53,80 @@ describe('tvPlaylist', () => {
     expect(tv.element.hidden).toBe(false);
     expect(tv.element.querySelector('code')?.textContent).toBe(URL_A);
     expect(visibleText(tv.element)).not.toContain('try');
+  });
+
+  it('says where VLC lists the DLNA server, with the playlist after it', async () => {
+    const tv = setUp(async () => ({
+      playlistUrls: [URL_A],
+      dlnaName: 'stream on studio',
+    }));
+
+    await tv.load();
+
+    const text = visibleText(tv.element);
+    expect(text).toContain(
+      'In VLC on your TV, open Browse, then Local network, then “stream on studio”.',
+    );
+    expect(text).toContain('Or, if it isn’t listed there, choose Stream');
+  });
+
+  it('turns DLNA off and on with the switch', async () => {
+    const saveSettings = vi.fn(async ({ dlnaOn }: { dlnaOn?: boolean }) => ({
+      diskLimitOn: false,
+      diskLimit: null,
+      dlnaOn: dlnaOn ?? true,
+      diskUsed: 0,
+      diskLimitReached: false,
+    }));
+    const tv = setUp(
+      async () => ({ playlistUrls: [URL_A], dlnaName: 'stream on studio' }),
+      undefined,
+      saveSettings,
+    );
+    await tv.load();
+    const toggle = tv.element.querySelector<HTMLInputElement>(
+      'input[name="dlnaOn"]',
+    );
+    expect(toggle?.checked).toBe(true);
+
+    toggle?.click();
+    await vi.waitFor(() => expect(toggle?.disabled).toBe(false));
+
+    expect(saveSettings).toHaveBeenCalledWith({ dlnaOn: false });
+    expect(toggle?.checked).toBe(false);
+    expect(visibleText(tv.element)).toContain('Turn this on to browse');
+    expect(visibleText(tv.element)).toContain(
+      'In VLC on your TV, choose Stream',
+    );
+  });
+
+  it('puts the switch back and says why when saving fails', async () => {
+    const saveSettings = vi.fn().mockRejectedValue(new Error('Server down'));
+    const tv = setUp(
+      async () => ({ playlistUrls: [URL_A], dlnaName: 'stream on studio' }),
+      undefined,
+      saveSettings,
+    );
+    await tv.load();
+    const toggle = tv.element.querySelector<HTMLInputElement>(
+      'input[name="dlnaOn"]',
+    );
+
+    toggle?.click();
+    await vi.waitFor(() => expect(toggle?.disabled).toBe(false));
+
+    expect(toggle?.checked).toBe(true);
+    expect(visibleText(tv.element)).toContain('Server down');
+  });
+
+  it('only offers the playlist without DLNA', async () => {
+    const tv = setUp(async () => ({ playlistUrls: [URL_A] }));
+
+    await tv.load();
+
+    const text = visibleText(tv.element);
+    expect(text).not.toContain('Local network');
+    expect(text).toContain('In VLC on your TV, choose Stream');
   });
 
   it('offers the other addresses after the first', async () => {

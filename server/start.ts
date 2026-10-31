@@ -1,5 +1,7 @@
+import { hostname } from 'node:os';
 import { createApp } from './app.js';
-import { lanAddresses } from './network.js';
+import { type DeviceInfo, deviceName, deviceUuid } from './dlna.js';
+import { lanAddresses, lanInterfaces } from './network.js';
 import { SavedTorrents } from './saved-torrents.js';
 import {
   activeDiskLimit,
@@ -7,6 +9,7 @@ import {
   GB,
   SettingsStore,
 } from './settings.js';
+import { SsdpServer } from './ssdp.js';
 import {
   createTorrentClient,
   destroyTorrentClient,
@@ -22,6 +25,7 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
   // 0.0.0.0 exposes the server to other devices on the LAN; set HOST=127.0.0.1 to keep it local.
   const host = process.env.HOST || '0.0.0.0';
   const config = torrentConfig();
+  const dlna = dlnaDevice(host, port);
   await ensureDownloadDir(config.downloadDir);
   // Decision #13: add the torrents from before the last shutdown again.
   const saved = new SavedTorrents(config.downloadDir);
@@ -83,14 +87,48 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
     downloadDir: config.downloadDir,
     saved,
     restore,
+    dlna,
     settings,
   });
+  let ssdp: SsdpServer | undefined;
   const server = app.listen(port, host, () => {
     console.log(`stream listening on http://localhost:${port}`);
     if (host === '0.0.0.0') {
       for (const address of lanAddresses()) {
         console.log(`  on your network: http://${address}:${port}`);
       }
+    }
+    if (dlna) {
+      const address = server.address();
+      const running = new SsdpServer({
+        uuid: dlna.uuid,
+        port: address && typeof address === 'object' ? address.port : port,
+        // HOST set to one LAN address keeps DLNA to that network too.
+        interfaces: () =>
+          lanInterfaces().filter(
+            (iface) => host === '0.0.0.0' || iface.address === host,
+          ),
+      });
+      ssdp = running;
+      // The DLNA setting starts and stops announcing, one change at a time.
+      let applied: boolean | undefined;
+      let changes = Promise.resolve();
+      const apply = ({ dlnaOn }: { dlnaOn: boolean }) => {
+        changes = changes.then(async () => {
+          if (dlnaOn === applied) return;
+          applied = dlnaOn;
+          if (!dlnaOn) {
+            await running.stop();
+            console.log('DLNA off (turn it on in Settings)');
+          } else if (await running.start()) {
+            console.log(
+              `  in VLC on a TV: Browse > Local network > ${dlna.name} (turn it off in Settings)`,
+            );
+          }
+        });
+      };
+      apply(settings.get());
+      settings.onChange(apply);
     }
   });
 
@@ -104,6 +142,8 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
     server.close();
     server.closeAllConnections();
     try {
+      // Tells players on the network the server is gone.
+      await ssdp?.stop();
       await destroyTorrentClient(client);
       await saved.flush();
       await settings.flush();
@@ -116,4 +156,15 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
 
   process.on('SIGINT', (signal) => void shutDown(signal));
   process.on('SIGTERM', (signal) => void shutDown(signal));
+}
+
+// Step 3.12: the DLNA server, unless HOST keeps the HTTP port off the
+// network, where players couldn't reach it anyway. The DLNA setting (DLNA=0
+// starts it off) turns it on and off while the server runs.
+function dlnaDevice(host: string, port: number): DeviceInfo | undefined {
+  if (host !== '0.0.0.0' && !lanAddresses().includes(host)) {
+    console.log(`DLNA off: HOST=${host} isn't reachable from the network`);
+    return undefined;
+  }
+  return { uuid: deviceUuid(hostname(), port), name: deviceName(hostname()) };
 }

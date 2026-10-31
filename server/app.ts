@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
 import { DiskLimit } from './disk-limit.js';
+import { type DeviceInfo, dlnaRouter } from './dlna.js';
 import { leftoversRouter } from './leftovers.js';
 import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
 import { activeDiskLimit, SettingsStore } from './settings.js';
@@ -24,6 +25,9 @@ export interface AppOptions {
   restore?: readonly SavedTorrent[];
   // The machine's LAN addresses, for the TV playlist; tests pass their own.
   lanAddresses?: () => string[];
+  // Step 3.12: the DLNA server's name and UDN, or none when HOST keeps the
+  // server off the network. The DLNA setting turns it on and off.
+  dlna?: DeviceInfo;
   // Decision #36: the user's settings, loaded at startup. Without it they
   // start as defaults and are saved in downloadDir.
   settings?: SettingsStore;
@@ -37,6 +41,7 @@ export function createApp({
   saved,
   restore,
   lanAddresses,
+  dlna,
   settings = new SettingsStore(downloadDir),
 }: AppOptions): Express {
   const app = express();
@@ -68,7 +73,15 @@ export function createApp({
   app.use(leftoversRouter({ client, downloadDir }));
 
   // Step 3.11: /tv.m3u for VLC on a TV, and /api/tv with its address.
-  app.use(tvRouter({ client, lanAddresses }));
+  // Step 3.12: VLC's Browse > Local network lists each torrent as a folder,
+  // while the DLNA setting is on.
+  const dlnaOn = () => settings.get().dlnaOn;
+  app.use(tvRouter({ client, lanAddresses, dlnaName: dlna?.name, dlnaOn }));
+  if (dlna) {
+    app.use(
+      dlnaRouter({ client, device: dlna, enabled: dlnaOn, lanAddresses }),
+    );
+  }
 
   app.use((_req, res) => {
     res.status(404).type('text/plain').send('Not Found');

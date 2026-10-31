@@ -17,9 +17,16 @@ export interface Settings {
   // Most bytes the torrents may keep in DOWNLOAD_DIR while the limit is on;
   // null if none was ever set.
   diskLimit: number | null;
+  // Step 3.12: whether the DLNA server lists the torrents in VLC's Local
+  // network.
+  dlnaOn: boolean;
 }
 
-export const NO_SETTINGS: Settings = { diskLimitOn: false, diskLimit: null };
+export const NO_SETTINGS: Settings = {
+  diskLimitOn: false,
+  diskLimit: null,
+  dlnaOn: true,
+};
 
 // The limit DiskLimit enforces: the number while it is on, otherwise none.
 export function activeDiskLimit({
@@ -29,13 +36,22 @@ export function activeDiskLimit({
   return diskLimitOn ? diskLimit : null;
 }
 
-export type SettingsEnv = Partial<Record<'DISK_LIMIT_GB', string>>;
+export type SettingsEnv = Partial<Record<'DISK_LIMIT_GB' | 'DLNA', string>>;
 
-// What applies until a setting is saved: DISK_LIMIT_GB, or no limit.
+// DLNA=0 starts with the DLNA server off; it is on by default.
+export function dlnaEnabled(value: string | undefined): boolean {
+  if (value === undefined || value === '' || value === '1') return true;
+  if (value === '0') return false;
+  throw new Error(`DLNA must be 1 or 0, got "${value}"`);
+}
+
+// What applies until a setting is saved: DISK_LIMIT_GB, or no limit, and
+// DLNA.
 export function defaultSettings(env: SettingsEnv = process.env): Settings {
+  const dlnaOn = dlnaEnabled(env.DLNA);
   const value = env.DISK_LIMIT_GB;
   if (value === undefined || value === '' || value === '0') {
-    return NO_SETTINGS;
+    return { ...NO_SETTINGS, dlnaOn };
   }
   const gb = Number(value);
   if (!Number.isFinite(gb) || gb <= 0) {
@@ -43,7 +59,7 @@ export function defaultSettings(env: SettingsEnv = process.env): Settings {
       `DISK_LIMIT_GB must be a number of gigabytes above 0, got "${value}"`,
     );
   }
-  return { diskLimitOn: true, diskLimit: Math.round(gb * GB) };
+  return { diskLimitOn: true, diskLimit: Math.round(gb * GB), dlnaOn };
 }
 
 function isDiskLimit(value: unknown): value is Settings['diskLimit'] {
@@ -73,10 +89,13 @@ export function parseSettings(
   }
   if (typeof diskLimitOn !== 'boolean') return null;
   if (diskLimitOn && diskLimit === null) return null;
+  const dlnaOn = 'dlnaOn' in fields ? fields.dlnaOn : current.dlnaOn;
+  if (typeof dlnaOn !== 'boolean') return null;
   // Turning it off with null keeps the number for when it is turned on.
   return {
     diskLimitOn,
     diskLimit: diskLimit ?? (diskLimitOn ? null : current.diskLimit),
+    dlnaOn,
   };
 }
 
@@ -85,6 +104,7 @@ export class SettingsStore {
   readonly path: string;
   private current: Settings;
   private pending: Promise<void> = Promise.resolve();
+  private readonly listeners: ((settings: Settings) => void)[] = [];
 
   constructor(downloadDir: string, defaults: Settings = NO_SETTINGS) {
     this.path = join(downloadDir, SETTINGS_FILE);
@@ -120,6 +140,7 @@ export class SettingsStore {
   // setting still applies until the next restart.
   set(settings: Settings): Promise<void> {
     this.current = settings;
+    for (const listener of this.listeners) listener(settings);
     const text = `${JSON.stringify(settings, null, 2)}\n`;
     this.pending = this.pending
       .then(() => writeFileAtomically(this.path, text))
@@ -127,6 +148,12 @@ export class SettingsStore {
         console.error('saving settings failed:', err);
       });
     return this.pending;
+  }
+
+  // Called with the new settings each time they are set, e.g. to start or
+  // stop the DLNA server.
+  onChange(listener: (settings: Settings) => void): void {
+    this.listeners.push(listener);
   }
 
   // Resolves once every save started so far has finished.

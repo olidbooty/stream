@@ -16,13 +16,13 @@ export interface TvPlaylist {
   update(playlistUrls: string[], dlnaName?: string | null): void;
   // Asks the server for the addresses; hidden if it can't answer.
   load(): Promise<void>;
-  // Shown with the torrent list, once there is something to show.
+  // Shown with the settings page, once there is something to show.
   setShown(shown: boolean): void;
 }
 
-// Step 3.11: the /tv.m3u address to save in VLC on a TV once. Below the
-// torrent list, since it is set up once and then rarely needed. From 3.12 it
-// first says where VLC finds the DLNA server, which needs no typing.
+// Step 3.11: the /tv.m3u address to save in VLC on a TV once. On the settings
+// page, since it is set up once and then rarely needed. From 3.12 it first
+// says where VLC finds the DLNA server, which needs no typing.
 export function tvPlaylist({ api, clipboard }: TvPlaylistOptions): TvPlaylist {
   const address = el('code', { className: 'tv-playlist__address' });
   const copied = el('span', {

@@ -8,6 +8,12 @@ import {
 } from './dlna.js';
 import { lanAddresses, lanInterfaces } from './network.js';
 import { SavedTorrents } from './saved-torrents.js';
+import {
+  activeDiskLimit,
+  defaultSettings,
+  GB,
+  SettingsStore,
+} from './settings.js';
 import { SsdpServer } from './ssdp.js';
 import {
   createTorrentClient,
@@ -29,6 +35,9 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
   // Decision #13: add the torrents from before the last shutdown again.
   const saved = new SavedTorrents(config.downloadDir);
   const restore = await saved.load();
+  // Decision #36: settings changed on the page, over DISK_LIMIT_GB.
+  const settings = new SettingsStore(config.downloadDir, defaultSettings());
+  await settings.load();
 
   const client = createTorrentClient({ ...config, webrtc });
 
@@ -54,6 +63,10 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
       );
     }
     console.log(`  downloads go to ${config.downloadDir}`);
+    const diskLimit = activeDiskLimit(settings.get());
+    if (diskLimit !== null) {
+      console.log(`  limited to ${diskLimit / GB} GB (change it in Settings)`);
+    }
   });
 
   // The client only emits 'error' when it can't continue, e.g. the peer port is
@@ -80,6 +93,7 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
     saved,
     restore,
     dlna,
+    settings,
   });
   let ssdp: SsdpServer | undefined;
   const server = app.listen(port, host, () => {
@@ -124,6 +138,7 @@ export async function start({ webrtc }: { webrtc: boolean }): Promise<void> {
       await ssdp?.stop();
       await destroyTorrentClient(client);
       await saved.flush();
+      await settings.flush();
       process.exit(0);
     } catch (err) {
       console.error('error destroying torrent client:', err);

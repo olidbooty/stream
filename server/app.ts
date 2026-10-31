@@ -1,8 +1,12 @@
 import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import type WebTorrent from 'webtorrent';
+import { DiskLimit } from './disk-limit.js';
 import { type DeviceInfo, dlnaRouter } from './dlna.js';
+import { leftoversRouter } from './leftovers.js';
 import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
+import { activeDiskLimit, SettingsStore } from './settings.js';
+import { settingsRouter } from './settings-api.js';
 import { torrentsRouter } from './torrents-api.js';
 import { tvRouter } from './tv-playlist.js';
 
@@ -23,6 +27,9 @@ export interface AppOptions {
   lanAddresses?: () => string[];
   // Step 3.12: the DLNA server's name and UDN, or none to leave it off.
   dlna?: DeviceInfo;
+  // Decision #36: the user's settings, loaded at startup. Without it they
+  // start as defaults and are saved in downloadDir.
+  settings?: SettingsStore;
 }
 
 // Build the Express app without binding a port, so tests can drive it with supertest.
@@ -34,6 +41,7 @@ export function createApp({
   restore,
   lanAddresses,
   dlna,
+  settings = new SettingsStore(downloadDir),
 }: AppOptions): Express {
   const app = express();
 
@@ -52,10 +60,16 @@ export function createApp({
     });
   });
 
+  const disk = new DiskLimit({
+    client,
+    limit: () => activeDiskLimit(settings.get()),
+  });
   app.use(
     '/api/torrents',
-    torrentsRouter({ client, downloadDir, saved, restore }),
+    torrentsRouter({ client, downloadDir, saved, restore, disk }),
   );
+  app.use(settingsRouter({ settings, disk }));
+  app.use(leftoversRouter({ client, downloadDir }));
 
   // Step 3.11: /tv.m3u for VLC on a TV, and /api/tv with its address.
   app.use(tvRouter({ client, lanAddresses, dlnaName: dlna?.name }));

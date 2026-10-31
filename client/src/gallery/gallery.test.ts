@@ -46,6 +46,7 @@ describe('gallery entries', () => {
     expect(tones.sort()).toEqual([
       'checking',
       'connecting',
+      'diskFull',
       'downloading',
       'error',
       'noPeers',

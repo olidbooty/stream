@@ -1,6 +1,7 @@
 // The player has its own address on the page, #play/<infoHash>/<index>, so
 // the browser's Back button closes it and a link to a film can be opened on
-// another device. No router library: the page has two views.
+// another device. No router library: the page has three views, the list, the
+// player and the settings page at #settings.
 
 export interface PlayRoute {
   infoHash: string;
@@ -17,4 +18,10 @@ export function parsePlayRoute(hash: string): PlayRoute | null {
 
 export function playHref(infoHash: string, index: number): string {
   return `#play/${infoHash}/${index}`;
+}
+
+export const SETTINGS_HREF = '#settings';
+
+export function isSettingsRoute(hash: string): boolean {
+  return hash === SETTINGS_HREF;
 }

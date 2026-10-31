@@ -22,6 +22,20 @@ body {
   gap: var(--space-5);
 }
 
+/* The title, with the Settings link at the far end. */
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settings-page {
+  display: grid;
+  gap: var(--space-5);
+}
+
 h1 {
   margin: 0;
   font-size: var(--text-xl);
@@ -188,6 +202,10 @@ h2 {
 .state-badge[data-tone="paused"] {
   --badge-color: var(--color-state-paused);
 }
+/* Amber: it needs the user to free space or raise the limit. */
+.state-badge[data-tone="diskFull"] {
+  --badge-color: var(--color-warning);
+}
 
 /* Progress bar */
 .progress {
@@ -216,14 +234,15 @@ h2 {
 
 /* Status banner: the live-updates error indicator */
 .status-banner {
+  --banner-color: var(--color-state-error);
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid var(--color-state-error);
+  border: var(--border-width) solid var(--banner-color);
   border-radius: var(--radius-md);
-  color: var(--color-state-error);
+  color: var(--banner-color);
 }
 
 .status-banner::before {
@@ -232,17 +251,12 @@ h2 {
   width: var(--dot-md);
   height: var(--dot-md);
   border-radius: 50%;
-  background: var(--color-state-error);
+  background: var(--banner-color);
 }
 
 /* Something still works, such as the sound of a video without its picture. */
 .status-banner[data-tone="warning"] {
-  border-color: var(--color-state-noPeers);
-  color: var(--color-state-noPeers);
-}
-
-.status-banner[data-tone="warning"]::before {
-  background: var(--color-state-noPeers);
+  --banner-color: var(--color-warning);
 }
 
 /* An action such as Retry sits at the end of the line. */
@@ -386,7 +400,7 @@ h2 {
 }
 
 .file-list__tag--warning {
-  color: var(--color-state-noPeers);
+  color: var(--color-warning);
 }
 
 /* Video player */
@@ -494,4 +508,67 @@ h2 {
 .tv-playlist__note {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
+}
+
+/* Settings: the disk limit */
+.settings {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings p {
+  margin: 0;
+}
+
+.settings__usage {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.settings__usage[data-reached="true"] {
+  color: var(--color-warning);
+}
+
+.settings__switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings__switch input {
+  width: var(--space-4);
+  height: var(--space-4);
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.field__input:disabled {
+  opacity: var(--opacity-disabled);
+}
+
+.settings__saved {
+  color: var(--color-state-seeding);
+  font-size: var(--text-sm);
+}
+
+.settings__leftovers {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__leftover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.settings__leftover-name {
+  flex: 1 1 var(--width-file-path);
+  overflow-wrap: anywhere;
 }

@@ -4,8 +4,10 @@ import type { TorrentSummary } from './torrents-api.js';
 
 // What the UI shows for a torrent. `noPeers` is Decision #15: no peer is
 // connected and WebTorrent's own check has found none since the last one left.
+// `diskFull` is Decision #36: paused because downloads reached the disk limit.
 export type TorrentState =
   | 'paused'
+  | 'diskFull'
   | 'connecting'
   | 'downloading'
   | 'seeding'
@@ -17,6 +19,8 @@ export interface TorrentStateInput {
   failed: boolean;
   // Paused by the user: no peers, nothing transferred.
   paused: boolean;
+  // Paused by the disk limit instead (DiskLimit); paused is true as well.
+  diskFull?: boolean;
   // Every selected file is on disk (Decision #23).
   done: boolean;
   hasMetadata: boolean;
@@ -31,12 +35,14 @@ export interface TorrentStateInput {
 export function torrentState({
   failed,
   paused,
+  diskFull = false,
   done,
   hasMetadata,
   numPeers,
   noPeersReported,
 }: TorrentStateInput): TorrentState {
   if (failed) return 'error';
+  if (diskFull) return 'diskFull';
   // Paused beats the rest: it has no peers on purpose, and a paused finished
   // torrent isn't uploading.
   if (paused) return 'paused';

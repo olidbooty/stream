@@ -1,3 +1,5 @@
+import type { LeftoversInfo } from '../../../server/leftovers.js';
+import type { SettingsInfo } from '../../../server/settings-api.js';
 import type { TorrentSummary } from '../../../server/torrents-api.js';
 import { ApiError } from '../api.js';
 import { isDownloadSlow, slowDownloadMessage } from '../buffer-health.js';
@@ -12,6 +14,7 @@ import {
   pictureMissingProblem,
 } from '../media-error.js';
 import { sampleDetail, sampleSummary } from '../sample-data.js';
+import { settingsPanel } from '../settings-panel.js';
 import { torrentForm } from '../torrent-form.js';
 import { torrentList } from '../torrent-list.js';
 import { tvPlaylist } from '../tv-playlist.js';
@@ -94,6 +97,12 @@ const BADGE_TORRENTS: Record<StateLabel['tone'], TorrentSummary> = {
   seeding,
   noPeers: sampleSummary({ ...pendingMagnet, state: 'noPeers' }),
   paused,
+  diskFull: sampleSummary({
+    state: 'diskFull',
+    numPeers: 0,
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+  }),
   error: failed,
 };
 
@@ -210,6 +219,27 @@ function tv(
   });
   t.update(playlistUrls, dlnaName);
   return t.element;
+}
+
+const GB = 1_000_000_000;
+
+function settings(
+  info: SettingsInfo,
+  leftovers: LeftoversInfo = { pending: false, leftovers: [] },
+): HTMLElement {
+  const panel = settingsPanel({
+    api: {
+      getSettings: async () => info,
+      saveSettings: async () => info,
+      getLeftovers: async () => leftovers,
+      deleteLeftover: async () => {},
+    },
+    confirm: (message) =>
+      confirmDialog(document.body, { message, confirmLabel: 'Delete' }),
+  });
+  panel.update(info);
+  panel.updateLeftovers(leftovers);
+  return panel.element;
 }
 
 function textInput(placeholder = ''): HTMLInputElement {
@@ -480,5 +510,79 @@ export const entries: GalleryEntry[] = [
     component: 'Watch on TV',
     state: 'no network',
     render: () => tv([]),
+  },
+  {
+    component: 'Settings',
+    state: 'limit off',
+    render: () =>
+      settings({
+        diskLimitOn: false,
+        diskLimit: 50 * GB,
+        diskUsed: 12.4 * GB,
+        diskLimitReached: false,
+      }),
+  },
+  {
+    component: 'Settings',
+    state: 'under the limit',
+    render: () =>
+      settings({
+        diskLimitOn: true,
+        diskLimit: 50 * GB,
+        diskUsed: 12.4 * GB,
+        diskLimitReached: false,
+      }),
+  },
+  {
+    component: 'Settings',
+    state: 'limit reached',
+    render: () =>
+      settings({
+        diskLimitOn: true,
+        diskLimit: 50 * GB,
+        diskUsed: 50.2 * GB,
+        diskLimitReached: true,
+      }),
+  },
+  {
+    component: 'Settings',
+    state: 'leftover files',
+    render: () =>
+      settings(
+        {
+          diskLimitOn: true,
+          diskLimit: 50 * GB,
+          diskUsed: 12.4 * GB,
+          diskLimitReached: false,
+        },
+        {
+          pending: false,
+          leftovers: [
+            { name: 'Old Film (2019)', folder: true, bytes: 4.2 * GB },
+            { name: 'sample.mkv', folder: false, bytes: 38_000_000 },
+          ],
+        },
+      ),
+  },
+  {
+    component: 'Settings',
+    state: 'invalid limit',
+    render: () => {
+      const element = settings({
+        diskLimitOn: true,
+        diskLimit: 50 * GB,
+        diskUsed: 12.4 * GB,
+        diskLimitReached: false,
+      });
+      const input = element.querySelector<HTMLInputElement>(
+        'input[name="diskLimit"]',
+      );
+      const form = element.querySelector('form');
+      if (input && form) {
+        input.value = 'lots';
+        form.requestSubmit();
+      }
+      return element;
+    },
   },
 ];

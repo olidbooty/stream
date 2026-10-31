@@ -51,6 +51,18 @@ on an ephemeral port with `app.listen(0)`, reads events with `fetch` and a
 stream reader, then aborts (see `GET /events` in
 `server/torrents-api.test.ts`).
 
+A restart is two routers on the same directory. `server/saved-torrents.test.ts`
+and `server/torrents-restore.test.ts` give each test its own `DOWNLOAD_DIR`
+from `mkdtempSync()`, build a router with a `SavedTorrents` on it, then build
+a second one with a fresh `FakeWebTorrent` from what `saved.load()` returns,
+as `server/start.ts` does at startup (Decision #13). Remove the directory in
+`afterEach`.
+
+The TV playlist's addresses depend on the request's `Host` header and the
+machine's LAN addresses, so `server/tv-playlist.test.ts` sets `Host` with
+supertest's `.set()` and passes `createApp()` its own `lanAddresses`
+function rather than reading the real network interfaces.
+
 ## Client tests
 
 `client/src/main.ts` is the entry point and runs as soon as it is imported,
@@ -254,6 +266,15 @@ hand:
 6. Restart the server with Ctrl+C and `npm start` while a torrent is part
    downloaded. It should come back with the same progress, selected files
    and paused state, and its files should still be in `DOWNLOAD_DIR`.
+   To check the disk limit (Decision #36), set a limit on the Settings page a
+   little above what the torrents use now, and play or add something. Once
+   usage reaches it, the downloading torrents show "Paused: disk limit
+   reached", the list shows the amber disk-limit banner, and adding another
+   is refused; raising the limit, or unticking the checkbox (which greys
+   out the number) and saving, resumes them.
+   A restart keeps the limit. Put a folder of your own in `DOWNLOAD_DIR`
+   and reload: it shows under Leftover files, and Delete removes it after
+   the confirmation.
 
 7. To see how playback copes when peers slow down (step 3.5), seed a file
    you made from a second WebTorrent client on the same machine with the
@@ -268,7 +289,7 @@ hand:
    1200k -c:a libopus Clip.webm`.
 
 8. For the TV playlist (step 3.11), open the `/tv.m3u` address shown under
-   **Watch on TV** in VLC on the TV (Stream, or Network Stream). Each video
+   **Watch on TV** (Settings page) in VLC on the TV (Stream, or Network Stream). Each video
    should be listed by name, play, and seek; playing one of a paused torrent
    should resume it. Without a TV, `cvlc --play-and-exit -vv <address>`
    (VLC refuses to run as root) logs each entry's name and its `Range`

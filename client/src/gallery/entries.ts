@@ -505,10 +505,11 @@ export const entries: GalleryEntry[] = [
   },
   {
     component: 'Settings',
-    state: 'no limit',
+    state: 'limit off',
     render: () =>
       settings({
-        diskLimit: null,
+        diskLimitOn: false,
+        diskLimit: 50 * GB,
         diskUsed: 12.4 * GB,
         diskLimitReached: false,
       }),
@@ -518,6 +519,7 @@ export const entries: GalleryEntry[] = [
     state: 'under the limit',
     render: () =>
       settings({
+        diskLimitOn: true,
         diskLimit: 50 * GB,
         diskUsed: 12.4 * GB,
         diskLimitReached: false,
@@ -528,6 +530,7 @@ export const entries: GalleryEntry[] = [
     state: 'limit reached',
     render: () =>
       settings({
+        diskLimitOn: true,
         diskLimit: 50 * GB,
         diskUsed: 50.2 * GB,
         diskLimitReached: true,
@@ -538,7 +541,12 @@ export const entries: GalleryEntry[] = [
     state: 'leftover files',
     render: () =>
       settings(
-        { diskLimit: 50 * GB, diskUsed: 12.4 * GB, diskLimitReached: false },
+        {
+          diskLimitOn: true,
+          diskLimit: 50 * GB,
+          diskUsed: 12.4 * GB,
+          diskLimitReached: false,
+        },
         {
           pending: false,
           leftovers: [
@@ -553,11 +561,14 @@ export const entries: GalleryEntry[] = [
     state: 'invalid limit',
     render: () => {
       const element = settings({
+        diskLimitOn: true,
         diskLimit: 50 * GB,
         diskUsed: 12.4 * GB,
         diskLimitReached: false,
       });
-      const input = element.querySelector('input');
+      const input = element.querySelector<HTMLInputElement>(
+        'input[name="diskLimit"]',
+      );
       const form = element.querySelector('form');
       if (input && form) {
         input.value = 'lots';

@@ -529,6 +529,25 @@ h2 {
   color: var(--color-warning);
 }
 
+.settings__switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings__switch input {
+  width: var(--space-4);
+  height: var(--space-4);
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.field__input:disabled {
+  opacity: var(--opacity-disabled);
+}
+
 .settings__saved {
   color: var(--color-state-seeding);
   font-size: var(--text-sm);

@@ -69,11 +69,12 @@ export function limitText(diskLimit: number | null): string {
 }
 
 export function usageText({
+  diskLimitOn,
   diskLimit,
   diskUsed,
   diskLimitReached,
 }: SettingsInfo): string {
-  if (diskLimit === null)
+  if (!diskLimitOn || diskLimit === null)
     return `Torrents use ${formatBytes(diskUsed)}. No limit.`;
   const usage = `Torrents use ${formatBytes(diskUsed)} of ${formatBytes(diskLimit)}.`;
   return diskLimitReached
@@ -89,6 +90,10 @@ export function settingsPanel({
   confirm,
   now = Date.now,
 }: SettingsPanelOptions): SettingsPanel {
+  // On or off, kept apart from the number so it comes back when turned on.
+  const limitOn = el('input', {
+    attrs: { type: 'checkbox', name: 'diskLimitOn' },
+  });
   const limit = field({
     label: 'Disk limit (GB)',
     input: el('input', {
@@ -97,11 +102,15 @@ export function settingsPanel({
         name: 'diskLimit',
         inputmode: 'decimal',
         autocomplete: 'off',
-        placeholder: 'No limit',
+        placeholder: 'For example 50',
       },
     }),
-    help: 'Leave empty for no limit. At the limit, downloads pause until you remove a torrent or raise it.',
+    help: 'At the limit, downloads pause until you remove a torrent or raise it.',
   });
+  const syncInput = () => {
+    limit.input.disabled = !limitOn.checked;
+    if (!limitOn.checked) limit.setError(null);
+  };
   const save = button({ label: 'Save', variant: 'primary', type: 'submit' });
   const saved = el('p', {
     className: 'settings__saved',
@@ -111,6 +120,12 @@ export function settingsPanel({
   const form = el(
     'form',
     { className: 'add-torrent__form' },
+    el(
+      'label',
+      { className: 'settings__switch' },
+      limitOn,
+      'Limit the disk space torrents use',
+    ),
     el('div', { className: 'add-torrent__row' }, limit.element, save),
     saved,
   );
@@ -157,17 +172,24 @@ export function settingsPanel({
   };
   show();
 
-  limit.input.addEventListener('input', () => {
-    editing = true;
-    saved.textContent = '';
-  });
+  for (const input of [limit.input, limitOn]) {
+    input.addEventListener('input', () => {
+      editing = true;
+      saved.textContent = '';
+      syncInput();
+    });
+  }
 
   function update(info: SettingsInfo): void {
     loaded = true;
     show();
     usage.textContent = usageText(info);
     usage.dataset.reached = String(info.diskLimitReached);
-    if (!editing) limit.input.value = limitText(info.diskLimit);
+    if (!editing) {
+      limitOn.checked = info.diskLimitOn;
+      limit.input.value = limitText(info.diskLimit);
+      syncInput();
+    }
   }
 
   function leftoverRow({ name, folder, bytes }: Leftover): HTMLLIElement {
@@ -232,14 +254,20 @@ export function settingsPanel({
     event.preventDefault();
     saved.textContent = '';
     limit.setError(null);
+    const diskLimitOn = limitOn.checked;
     const diskLimit = parseLimit(limit.input.value);
-    if (diskLimit === undefined) {
-      limit.setError('Enter a number of gigabytes above 0, or leave it empty');
+    if (diskLimitOn && (diskLimit === undefined || diskLimit === null)) {
+      limit.setError(
+        'Enter a number of gigabytes above 0, or turn the limit off',
+      );
       return;
     }
     save.disabled = true;
     try {
-      const info = await api.saveSettings({ diskLimit });
+      // Off keeps whatever number the server has.
+      const info = await api.saveSettings(
+        diskLimitOn ? { diskLimitOn, diskLimit } : { diskLimitOn },
+      );
       editing = false;
       update(info);
       saved.textContent = 'Saved';

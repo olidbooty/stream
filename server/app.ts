@@ -4,7 +4,7 @@ import type WebTorrent from 'webtorrent';
 import { DiskLimit } from './disk-limit.js';
 import { leftoversRouter } from './leftovers.js';
 import type { SavedTorrent, SavedTorrents } from './saved-torrents.js';
-import { SettingsStore } from './settings.js';
+import { activeDiskLimit, SettingsStore } from './settings.js';
 import { settingsRouter } from './settings-api.js';
 import { torrentsRouter } from './torrents-api.js';
 import { tvRouter } from './tv-playlist.js';
@@ -58,7 +58,7 @@ export function createApp({
 
   const disk = new DiskLimit({
     client,
-    limit: () => settings.get().diskLimit,
+    limit: () => activeDiskLimit(settings.get()),
   });
   app.use(
     '/api/torrents',

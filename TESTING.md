@@ -308,6 +308,21 @@ hand:
    and turning it on sends `ssdp:alive` again; a script that joins `239.255.255.250:1900`
    shows the announcements.
 
+10. For the Docker image (step 5.1), on Linux with Docker running:
+    `docker build -t ghcr.io/olidbooty/stream:latest .`, then
+    `docker compose up -d` and `docker compose ps` should show `healthy`
+    within about 30 seconds, and `docker compose logs` the box's LAN
+    addresses and `peers over TCP, uTP, DHT, LSD, trackers, WebRTC` (a
+    missing uTP or WebRTC means a native module didn't build). Add the
+    seeder from item 7 (`x.pe=127.0.0.1:<port>` works, as the container
+    shares the host's network), play it and check `/tv.m3u` and DLNA as in
+    items 8 and 9. `docker compose restart` should restore the torrent and
+    the settings, and `docker compose down` should log
+    `SIGTERM received, shutting down` and stop in about a second. Repeat
+    with `compose.bridge.yaml`: healthy, the page and the playlist work on
+    the host's LAN address. On a Raspberry Pi, `docker compose pull` should
+    fetch the arm64 image.
+
 Real peer tests use your network and upload to the swarm (see
 [ARCHITECTURE.md](ARCHITECTURE.md#seeding)). Remove test torrents afterwards
 and clear the download directory.

@@ -94,6 +94,58 @@ and the tests, then publishes the gallery to GitHub Pages at
 <https://olidbooty.github.io/stream/>. This needs Pages turned on once:
 Settings > Pages > Source: GitHub Actions.
 
+## Running with Docker
+
+To keep the server on for the TV, run it on an always-on Linux box, such as
+a Raspberry Pi or a NAS, with Docker and the Compose plugin. Copy
+`compose.yaml` there (or clone the repository) and run:
+
+```sh
+docker compose pull      # the published image, ghcr.io/olidbooty/stream
+docker compose up -d
+```
+
+Then open `http://<the box's address>:1234` from any device on the network.
+`docker compose logs` shows the startup log with the LAN addresses and the
+DLNA name, and `docker compose pull && docker compose up -d` updates it. To
+build the image on the box from a clone instead, run
+`docker compose up -d --build`; on a Pi that takes a while, because
+`utp-native` has no prebuilt binary for ARM and is compiled.
+
+The image is published from `main` by `.github/workflows/docker.yml` for
+`amd64` and `arm64` (64-bit Raspberry Pi OS, most NAS boxes), after the same
+checks as the gallery. GitHub keeps a new package private: make it public
+once under the package's settings, or run `docker login ghcr.io` on the box.
+
+What `compose.yaml` sets up (Decision #39):
+
+- **Host networking.** The container uses the box's own network, so the DLNA
+  server (UDP `1900` multicast) and local peer discovery reach the LAN, and
+  the startup log prints the box's real addresses. This only works on Linux.
+- **A volume for downloads.** `DOWNLOAD_DIR` is `/downloads`, kept in the
+  `downloads` volume with the saved torrent list and the settings, so a new
+  image or a restart keeps the torrents. To use a folder on the box, replace
+  `downloads:/downloads` with, for example, `./downloads:/downloads`, after
+  creating the folder and giving it to the image's user:
+  `mkdir downloads && sudo chown 1000:1000 downloads`.
+- **Always on.** `restart: unless-stopped` starts it again after a crash or a
+  reboot. The image's health check calls `GET /api/client` every 30 seconds,
+  so `docker compose ps` shows `healthy`.
+- **The same variables as above** in its `environment`. Port forwarding on
+  the router is as in [Port forwarding](#port-forwarding), to the box.
+
+`docker compose down` stops it cleanly (the client stops announcing first)
+and keeps the volume; `docker compose down -v` also deletes the downloads.
+
+On macOS or Windows, Docker Desktop has no host networking by default, so use
+`compose.bridge.yaml` (`docker compose -f compose.bridge.yaml up -d`). It
+publishes the HTTP and peer ports instead. Multicast doesn't reach the
+container there, so VLC won't find the DLNA server and local peers aren't
+discovered: use the `/tv.m3u` playlist on the TV, and open the page on the
+computer's LAN address rather than `localhost`, since the playlist address
+follows the page's. The startup log shows the container's address, not the
+computer's.
+
 ## Using the app
 
 Open the server's URL in a browser on any device on your network. Paste a
@@ -297,7 +349,10 @@ client/src/ui/            design system components (Decision #27)
 client/src/styles/        design tokens and component styles
 public/                   build output served by Express (gitignored)
 dist-gallery/             component gallery build for GitHub Pages (gitignored)
-.github/workflows/        publishes the gallery from main
+.github/workflows/        publishes the gallery and the Docker image from main
+Dockerfile                the server's image (step 5.1)
+compose.yaml              runs the image with host networking on a Linux box
+compose.bridge.yaml       the same on Docker's bridge network (no DLNA)
 downloads/                default DOWNLOAD_DIR (gitignored)
 test/mocks/               shared test doubles, e.g. the WebTorrent fake
 biome.json                Biome lint and format config

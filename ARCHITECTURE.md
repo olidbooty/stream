@@ -755,6 +755,39 @@ how BitTorrent works, but it means the server distributes whatever it
 downloads. Only use content you have the right to share, and remove torrents
 when they're no longer being watched.
 
+### Running in Docker
+
+Step 5.1, Decision #39. The TV routes (the playlist and DLNA) only work while
+the server runs, so it is packaged to run on an always-on box:
+
+- `Dockerfile` has two stages on the same Debian release. The build stage is
+  the full `node:24-bookworm` image, which already has the C++ toolchain and
+  Python node-gyp needs, so `npm ci` can compile `utp-native` on ARM, where it
+  has no prebuilt binary (Decision #10); `node-datachannel` downloads its
+  prebuilt one for amd64 and arm64. It builds the page into `public/` and
+  prunes the dev dependencies. The runtime stage, `node:24-bookworm-slim`,
+  only gets `node_modules`, `server/`, `public/` and `package.json`.
+- It runs `node --import tsx server/index.ts` directly, not `npm start`, which
+  would rebuild the page on every start. Node is PID 1 (the image's
+  entrypoint `exec`s it), so `docker stop`'s `SIGTERM` reaches the shutdown
+  handler: the client stops announcing and the downloads are kept.
+- It runs as the image's `node` user (uid 1000), never root. `DOWNLOAD_DIR`
+  is `/downloads`, a volume owned by that user, holding the downloads,
+  `.torrents` and `.settings.json`.
+- The health check is `GET /api/client` with Node's `fetch`, as the slim
+  image has no `curl`.
+- `compose.yaml` uses host networking. SSDP (DLNA) and LSD are multicast,
+  which Docker's bridge network doesn't forward, and inside a bridge the
+  server only sees the container's own address, so `lanAddresses()` (and the
+  startup log, `/api/tv` and the DLNA LAN check) would be wrong. With host
+  networking the container also has the box's host name, so the DLNA name
+  (`stream on <host>`) and its UUID stay the same across new images.
+  `compose.bridge.yaml` is the fallback for Docker Desktop, with `DLNA=0`.
+- `.github/workflows/docker.yml` builds `linux/amd64` and `linux/arm64`
+  (arm64 under QEMU) on every push to `main`, after lint, typecheck and the
+  tests, and pushes `ghcr.io/olidbooty/stream:latest` and a `sha-` tag. 32-bit
+  ARM (`armv7`) isn't built.
+
 ### Network exposure
 
 The server binds to `0.0.0.0`, so anyone on the LAN can add torrents and
@@ -773,6 +806,12 @@ machine's LAN networks, and only announces itself on those, with a multicast
 TTL of 2. Its answers are a few hundred bytes, unicast to the asker. It
 lists every torrent's videos to anyone on the LAN, which the page already
 does. Never forward UDP `1900` on the router.
+
+In Docker with `compose.yaml` (host networking) all of this applies to the
+box as is: the container's ports are the box's ports. With
+`compose.bridge.yaml`, Docker publishes the HTTP port on all of the host's
+interfaces; `HOST` inside the container can't narrow that, so bind the
+published port instead (`127.0.0.1:1234:1234`) to keep it to one machine.
 
 `/api/torrents` and `/api/settings` have no authentication (Decision #12),
 so anyone on the LAN can also change or remove the disk limit. A torrent also makes
@@ -847,3 +886,4 @@ design stays next to the code.
 | 36 | Where the disk limit setting is kept, and what happens at the limit | Decided | One JSON file, `DOWNLOAD_DIR/.settings.json`, written atomically like `.torrents` and changed from the page through `/api/settings`; `DISK_LIMIT_GB` is only the default (owner, 30 Oct 26). At the limit, torrents still downloading pause (`diskFull`) and adding or resuming answers `507`; they resume once usage is below it (owner, 30 Oct 26). Step 4.3. See [Disk limit and settings](#disk-limit-and-settings) |
 | 37 | DLNA server for browsing in VLC | Decided | Hand-written UPnP MediaServer on Express and `node:dgram`, on by default, with an on/off switch in Watch on TV saved as the `dlnaOn` setting (owner, 31 Oct 26; `DLNA=0` starts it off). Not available when `HOST` keeps the HTTP port local. One folder per torrent of its videos, same order as the playlist, with `?play` stream URLs and matching subtitles as `text/vtt` resources, which VLC lists as subtitle tracks. SSDP on UDP 1900 only answers and announces on LAN networks. The playlist stays as the fallback. Step 3.12. See [Browsing in VLC (DLNA)](#browsing-in-vlc-dlna) |
 | 38 | Cleaning up files no torrent owns | Decided | Listed under Settings (`GET /api/leftovers`) with a Delete button per entry, never deleted automatically at startup, since `DOWNLOAD_DIR` may hold the user's own files (owner, 30 Oct 26). Nothing is listed while a torrent lacks its file list. Removing a multi-file torrent also removes its empty folders (#35). Step 4.3. See [Leftover files](#leftover-files) |
+| 39 | How the server is packaged for an always-on box | Decided | A two-stage Docker image (`node:24-bookworm` to build, `-slim` to run, as the `node` user, `DOWNLOAD_DIR` a volume at `/downloads`, health check on `/api/client`) and a compose file with host networking, because DLNA and LSD multicast don't cross the bridge network; a bridge variant without DLNA for Docker Desktop. Published to `ghcr.io/olidbooty/stream` for amd64 and arm64 from `main`. Step 5.1. See [Running in Docker](#running-in-docker) |

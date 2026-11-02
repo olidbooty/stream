@@ -1,0 +1,28 @@
+# Step 5.1: the same server on Docker's default bridge network, for hosts
+# where host networking isn't available (Docker Desktop on macOS or Windows).
+#   docker compose -f compose.bridge.yaml up -d
+# Multicast doesn't reach the container here, so DLNA browsing in VLC and
+# local peer discovery (LSD) don't work: use the /tv.m3u playlist on the TV.
+# The startup log prints the container's own address, not the computer's, so
+# open http://<the computer's address>:1234.
+services:
+  stream:
+    image: ghcr.io/olidbooty/stream:latest
+    build: .
+    restart: unless-stopped
+    environment:
+      PORT: 1234
+      TORRENT_PORT: 6881
+      DHT_PORT: 6882
+      # Starts DLNA off; a DLNA switch saved under Settings still wins.
+      DLNA: 0
+    ports:
+      - '1234:1234'
+      - '6881:6881/tcp'
+      - '6881:6881/udp'
+      - '6882:6882/udp'
+    volumes:
+      - downloads:/downloads
+
+volumes:
+  downloads:

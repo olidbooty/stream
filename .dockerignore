@@ -1,0 +1,13 @@
+# Only what the image build needs goes into the build context.
+.git
+.github
+node_modules
+public
+dist-gallery
+coverage
+downloads
+*.log
+.env
+.DS_Store
+Dockerfile
+compose*.yaml

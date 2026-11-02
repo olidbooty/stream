@@ -1,0 +1,27 @@
+# Step 5.1: run the server on an always-on Linux box (Raspberry Pi, NAS).
+#   docker compose pull && docker compose up -d   # the published image
+#   docker compose up -d --build                  # or build it on the box
+# Then open http://<the box's address>:1234 from any device on the network.
+services:
+  stream:
+    image: ghcr.io/olidbooty/stream:latest
+    build: .
+    # Host networking, because the TV finds the server by multicast (SSDP on
+    # UDP 1900 for DLNA, and LSD for local peers), which doesn't cross Docker's
+    # bridge network. It also makes the startup log print the box's real LAN
+    # addresses. Linux only; see compose.bridge.yaml for other hosts.
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PORT: 1234
+      TORRENT_PORT: 6881
+      DHT_PORT: 6882
+      # DISK_LIMIT_GB: 50
+    volumes:
+      # Downloads, the saved torrent list and the settings. To use a folder on
+      # the box instead, e.g. ./downloads:/downloads, create it first and give
+      # it to uid 1000 (sudo chown 1000:1000 downloads).
+      - downloads:/downloads
+
+volumes:
+  downloads:

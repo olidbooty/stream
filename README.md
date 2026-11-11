@@ -124,7 +124,15 @@ switch under the description turns it off and on at once (players are told
 when it goes), and is saved with the other settings; it is also
 `{"dlnaOn": false}` at `/api/settings`.
 
-If the server isn't listed there (some routers block the multicast it uses),
+It should be listed within a few seconds of opening **Local network**. If it
+isn't, the server's terminal says why: `DLNA: answering a search from <TV's
+address>` means the TV's search arrived and was answered; no such line means
+the search never reached the computer (a firewall, or a router or mesh that
+drops multicast); `DLNA: can't send ...` on a Mac means the app the server runs
+in (Terminal, iTerm, VS Code) needs **Local Network** access under System
+Settings > Privacy & Security, then a restart of the server.
+
+If the server still isn't listed (some routers block the multicast it uses),
 **Watch on TV** also shows a playlist address like
 `http://192.168.1.20:1234/tv.m3u`. In VLC choose **Stream** (**Network
 Stream** in some versions), enter that address and save it as a favourite.

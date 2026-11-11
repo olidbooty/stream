@@ -110,6 +110,7 @@ class FakeSocket implements SsdpSocket {
   memberships: string[] = [];
   closed = false;
   failBind: Error | undefined;
+  failSend: Error | undefined;
   private via: string | undefined;
   private listeners: {
     message?: (msg: Buffer, rinfo: RemoteInfo) => void;
@@ -141,7 +142,8 @@ class FakeSocket implements SsdpSocket {
     callback: (err: Error | null) => void,
   ): void {
     this.sent.push({ text, port, address, via: this.via });
-    queueMicrotask(() => callback(null));
+    const err = this.failSend ?? null;
+    queueMicrotask(() => callback(err));
   }
   close(callback?: () => void): void {
     this.closed = true;
@@ -339,5 +341,49 @@ describe('SsdpServer', () => {
     );
     expect(socket.closed).toBe(true);
     await ssdp.stop();
+  });
+
+  it('logs the interfaces it listens on and the devices it answers, once each', async () => {
+    const ssdp = server();
+    await ssdp.start();
+    await flush();
+
+    socket.receive(mSearch(DEVICE), '192.168.1.57');
+    socket.receive(mSearch('ssdp:all'), '192.168.1.57');
+    socket.receive(mSearch(DEVICE), '203.0.113.9');
+    socket.receive(
+      mSearch('urn:schemas-upnp-org:device:MediaRenderer:1'),
+      '192.168.1.80',
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(log.mock.calls.map(([message]) => message)).toEqual([
+      'DLNA: listening for players on 192.168.1.20',
+      'DLNA: listening for players on 10.0.0.5',
+      'DLNA: answering a search from 192.168.1.57',
+      "DLNA: ignoring a search from 203.0.113.9, which isn't on this machine's networks",
+    ]);
+  });
+
+  it('logs a failing send once, with the Mac Local Network hint', async () => {
+    socket.failSend = Object.assign(
+      new Error('send EHOSTUNREACH 239.255.255.250:1900'),
+      { code: 'EHOSTUNREACH' },
+    );
+    const ssdp = server();
+    await ssdp.start();
+    await flush();
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+
+    const failures = log.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.includes("can't send"));
+    // One per interface, though every announcement failed.
+    expect(failures).toHaveLength(2);
+    expect(failures[0]).toBe(
+      "DLNA: can't send to 239.255.255.250 via 192.168.1.20: send EHOSTUNREACH 239.255.255.250:1900 (on a Mac, allow Local Network access for the app the server runs in: System Settings > Privacy & Security > Local Network)",
+    );
+    // Sending carries on, so it recovers once access is given.
+    expect(socket.sent.length).toBeGreaterThan(20);
   });
 });

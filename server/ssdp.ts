@@ -160,6 +160,10 @@ export class SsdpServer {
   private readonly options: Required<SsdpOptions>;
   private socket: SsdpSocket | undefined;
   private readonly joined = new Set<string>();
+  // What has been logged once already: send failures, and the devices whose
+  // searches were answered, so a TV that can't see the server can be told
+  // apart from one whose search never arrives.
+  private readonly logged = new Set<string>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private readonly replies = new Set<ReturnType<typeof setTimeout>>();
   // Sends switch the multicast interface, so they go one at a time.
@@ -198,6 +202,7 @@ export class SsdpServer {
       socket.bind(SSDP_PORT, () => {
         bound = true;
         this.socket = socket;
+        this.logged.clear();
         // Stay on the home network.
         socket.setMulticastTTL(2);
         void this.announce();
@@ -237,6 +242,7 @@ export class SsdpServer {
       try {
         this.socket?.addMembership(SSDP_ADDRESS, address);
         this.joined.add(address);
+        this.options.log(`DLNA: listening for players on ${address}`);
       } catch (err) {
         this.options.log(
           `DLNA: can't listen for searches on ${address}: ${(err as Error).message}`,
@@ -289,24 +295,63 @@ export class SsdpServer {
             if (multicastInterface) {
               socket.setMulticastInterface(multicastInterface);
             }
-            // A failed send (an interface gone) only loses that packet.
-            socket.send(text, port, address, () => resolve());
-          } catch {
+            // A failed send (an interface gone) only loses that packet, but
+            // is logged once: if every send fails, players never hear of us.
+            socket.send(text, port, address, (err) => {
+              if (err) this.sendFailed(address, multicastInterface, err);
+              resolve();
+            });
+          } catch (err) {
+            this.sendFailed(address, multicastInterface, err as Error);
             resolve();
           }
         }),
     );
   }
 
+  private logOnce(key: string, message: string): void {
+    if (this.logged.has(key)) return;
+    this.logged.add(key);
+    this.options.log(message);
+  }
+
+  private sendFailed(
+    address: string,
+    via: string | undefined,
+    err: Error & { code?: string },
+  ): void {
+    const code = err.code ?? err.message;
+    // macOS 15 refuses multicast and LAN sends from an app without Local
+    // Network access, while still letting players connect in over HTTP.
+    const hint =
+      code === 'EHOSTUNREACH' || code === 'EPERM' || code === 'EACCES'
+        ? ' (on a Mac, allow Local Network access for the app the server runs in: System Settings > Privacy & Security > Local Network)'
+        : '';
+    this.logOnce(
+      `send ${address} ${via ?? ''} ${code}`,
+      `DLNA: can't send to ${address}${via ? ` via ${via}` : ''}: ${err.message}${hint}`,
+    );
+  }
+
   private onMessage(msg: Buffer, rinfo: RemoteInfo): void {
     const search = parseSearch(msg.toString('utf8'));
     if (!search) return;
+    const matches = searchMatches(this.options.uuid, search.target);
+    if (matches.length === 0) return;
     // Only devices on one of our networks; this also picks the address to
     // give them.
     const iface = interfaceFor(this.options.interfaces(), rinfo.address);
-    if (!iface) return;
-    const matches = searchMatches(this.options.uuid, search.target);
-    if (matches.length === 0) return;
+    if (!iface) {
+      this.logOnce(
+        `search ${rinfo.address}`,
+        `DLNA: ignoring a search from ${rinfo.address}, which isn't on this machine's networks`,
+      );
+      return;
+    }
+    this.logOnce(
+      `search ${rinfo.address}`,
+      `DLNA: answering a search from ${rinfo.address}`,
+    );
     const delay =
       this.options.random() * Math.min(search.mx * 1000, MAX_REPLY_DELAY_MS);
     const reply = setTimeout(() => {
